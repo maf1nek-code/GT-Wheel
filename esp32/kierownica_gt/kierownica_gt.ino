@@ -1,6 +1,6 @@
 /*
   ===========================================================================
-   Kierownica GT - firmware ESP32 (Arduino Nano ESP32 / klon Nano ESP32-S3)
+   Kierownica GT - firmware ESP32 (ESP32-S3 w formacie Nano)
   ===========================================================================
 
    Co robi:
@@ -16,21 +16,29 @@
            STATE?  -> STATE ....
            INFO    -> lista przyciskow i pinow
 
+   Piny:
+     Opisy na kierownicy (A3, D8, ...) to piny klasycznego Arduino Nano.
+     Ponizej uzyte sa ich odpowiedniki GPIO w ESP32-S3 w formacie Nano
+     (Arduino Nano ESP32 i klony) - fizycznie te SAME miejsca na listwie,
+     wiec plytke wkladasz w to samo gniazdo/zlacze.
+
    Arduino IDE:
-     Plytka:  "Arduino Nano ESP32"  (pakiet "Arduino ESP32 Boards" w Board Managerze)
-     Tools -> Pin Numbering: "By Arduino pin (default)"
+     Plytka: "Arduino Nano ESP32" (pakiet "Arduino ESP32 Boards")
+             albo dla klona: "ESP32S3 Dev Module" (pakiet "esp32" by Espressif,
+             wtedy Tools -> USB CDC On Boot: "Enabled").
+     Kod sam wybiera wlasciwa numeracje pinow - nic nie trzeba przestawiac.
      Serial Monitor: 115200 baud
 
    Podlaczenie przycisku:  PIN ---[ przycisk ]--- GND
    (wewnetrzny pull-up jest wlaczony, zaden rezystor nie jest potrzebny)
 
    !!! UWAGA - przyciski 6 i 7 !!!
-     Na kierownicy przycisk 6 jest podpiety do "GND", a przycisk 7 do "VIN".
-     To NIE sa piny wejsciowe - ESP32 nie jest w stanie ich odczytac,
-     a przycisk zwierajacy VIN z GND robi zwarcie zasilania!
-     Przepnij przewody tych dwoch przyciskow na wolne piny D2 i D3
-     (albo inne wolne: D4, D7, D9, D11, D12, A0, A4) i ewentualnie popraw
-     tabele ponizej.
+     Na kierownicy byly podpiete do "GND" i "VIN". W tych miejscach listwy
+     (zarowno w Nano, jak i w ESP32 Nano) sa piny ZASILANIA, nie wejscia -
+     nie da sie ich odczytac, a przycisk zwierajacy VIN z GND = zwarcie!
+     Przepnij je na najblizsze wolne piny po tej samej stronie listwy:
+        przycisk 6: z "GND" -> A4 (GPIO11)
+        przycisk 7: z "VIN" -> A0 (GPIO1)
 */
 
 #include <Arduino.h>
@@ -47,22 +55,44 @@ struct Button {
   const char* pinName;
 };
 
+// PIN(nazwa_Nano, GPIO_ESP32):
+//  - plytka "Arduino Nano ESP32" -> uzywa nazwy z Nano (core sam przelicza),
+//  - kazda inna plytka ESP32-S3  -> uzywa bezposrednio numeru GPIO.
+#if defined(ARDUINO_NANO_ESP32)
+  #define PIN(nanoName, gpio) (nanoName)
+#else
+  #define PIN(nanoName, gpio) (gpio)
+#endif
+
 // Kolejnosc = numer przycisku (1..12) - zgodnie z opisami na kierownicy.
-// GPIO w nawiasach dotyczy Arduino Nano ESP32 (gdyby trzeba bylo przejsc
-// na numeracje "By GPIO number").
+//
+//  Przycisk | Arduino Nano | ESP32 (GPIO)
+//  ---------+--------------+-------------
+//      1    |     A3       |   GPIO4
+//      2    |     A2       |   GPIO3
+//      3    |     D8       |   GPIO17
+//      4    |     D10      |   GPIO21
+//      5    |     A1       |   GPIO2
+//      6    |  (GND) A4    |   GPIO11   <- przepnij z GND na A4
+//      7    |  (VIN) A0    |   GPIO1    <- przepnij z VIN na A0
+//      8    |     A7       |   GPIO14
+//      9    |     A6       |   GPIO13
+//     10    |     A5       |   GPIO12
+//     11    |     D6       |   GPIO9
+//     12    |     D5       |   GPIO8
 Button buttons[] = {
-  { A3,  "A3"  },  //  1  (GPIO4)
-  { A2,  "A2"  },  //  2  (GPIO3)
-  { D8,  "D8"  },  //  3  (GPIO17)
-  { D10, "D10" },  //  4  (GPIO21)
-  { A1,  "A1"  },  //  5  (GPIO2)
-  { D2,  "D2"  },  //  6  (GPIO5)  <- na kierownicy byl GND, PRZEPNIJ na D2
-  { D3,  "D3"  },  //  7  (GPIO6)  <- na kierownicy byl VIN, PRZEPNIJ na D3
-  { A7,  "A7"  },  //  8  (GPIO14)
-  { A6,  "A6"  },  //  9  (GPIO13)
-  { A5,  "A5"  },  // 10  (GPIO12)
-  { D6,  "D6"  },  // 11  (GPIO9)
-  { D5,  "D5"  },  // 12  (GPIO8)
+  { PIN(A3,  4),  "A3/GPIO4"   },  //  1
+  { PIN(A2,  3),  "A2/GPIO3"   },  //  2
+  { PIN(D8,  17), "D8/GPIO17"  },  //  3
+  { PIN(D10, 21), "D10/GPIO21" },  //  4
+  { PIN(A1,  2),  "A1/GPIO2"   },  //  5
+  { PIN(A4,  11), "A4/GPIO11"  },  //  6  (na kierownicy bylo GND)
+  { PIN(A0,  1),  "A0/GPIO1"   },  //  7  (na kierownicy bylo VIN)
+  { PIN(A7,  14), "A7/GPIO14"  },  //  8
+  { PIN(A6,  13), "A6/GPIO13"  },  //  9
+  { PIN(A5,  12), "A5/GPIO12"  },  // 10
+  { PIN(D6,  9),  "D6/GPIO9"   },  // 11
+  { PIN(D5,  8),  "D5/GPIO8"   },  // 12
 };
 
 const uint8_t NUM_BUTTONS = sizeof(buttons) / sizeof(buttons[0]);

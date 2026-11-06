@@ -18,33 +18,42 @@ przez USB (port szeregowy), a program w Pythonie zamienia je na wirtualny kontro
 
 ## Przyciski i piny
 
+Opisy na kierownicy to piny klasycznego **Arduino Nano**. Firmware używa ich odpowiedników GPIO
+w **ESP32-S3 w formacie Nano** (Arduino Nano ESP32 i klony). Leżą one fizycznie **w tych samych
+miejscach listwy**, więc płytkę ESP32 wkładasz w to samo złącze.
+
 Każdy przycisk zwiera pin do **GND** (wspólny przewód GND na dole kierownicy).
 Firmware włącza wewnętrzny pull-up, więc rezystory nie są potrzebne.
 
-| Przycisk | Pin |
-|---:|---|
-| 1 | A3 |
-| 2 | A2 |
-| 3 | D8 |
-| 4 | D10 |
-| 5 | A1 |
-| 6 | **D2** (na kierownicy: GND – przepiąć!) |
-| 7 | **D3** (na kierownicy: VIN – przepiąć!) |
-| 8 | A7 |
-| 9 | A6 |
-| 10 | A5 |
-| 11 | D6 |
-| 12 | D5 |
+| Przycisk | Arduino Nano | ESP32 (GPIO) |
+|---:|---|---|
+| 1 | A3 | GPIO4 |
+| 2 | A2 | GPIO3 |
+| 3 | D8 | GPIO17 |
+| 4 | D10 | GPIO21 |
+| 5 | A1 | GPIO2 |
+| 6 | ~~GND~~ → **A4** | **GPIO11** |
+| 7 | ~~VIN~~ → **A0** | **GPIO1** |
+| 8 | A7 | GPIO14 |
+| 9 | A6 | GPIO13 |
+| 10 | A5 | GPIO12 |
+| 11 | D6 | GPIO9 |
+| 12 | D5 | GPIO8 |
 
-> ⚠️ **Przyciski 6 i 7:** `GND` i `VIN` to piny zasilania, nie wejścia, więc ESP32 nie może ich
-> odczytać. Do tego przycisk, który zwiera `VIN` ze wspólnym `GND`, robi zwarcie zasilania.
-> Przepnij przewody tych przycisków z `GND`/`VIN` na **D2** i **D3**. Możesz też użyć innych wolnych
-> pinów (D4, D7, D9, D11, D12, A0, A4) i poprawić tabelę `buttons[]` w pliku `.ino`.
+> ⚠️ **Przyciski 6 i 7:** w miejscach `GND` i `VIN` (zarówno w Nano, jak i w ESP32 Nano) są piny
+> zasilania, nie wejścia. Nie da się ich odczytać, a przycisk zwierający `VIN` z `GND` robi
+> zwarcie zasilania. Przepnij je na najbliższe wolne piny po tej samej stronie listwy:
+> przycisk 6 → **A4 (GPIO11)**, przycisk 7 → **A0 (GPIO1)**.
 
 ## 1. Wgranie firmware (Arduino IDE)
 
-1. *Boards Manager* → zainstaluj **Arduino ESP32 Boards**.
-2. *Tools → Board* → **Arduino Nano ESP32**, *Tools → Pin Numbering* → **By Arduino pin (default)**.
+1. *Boards Manager* → zainstaluj pakiet dla swojej płytki (patrz punkt 2).
+2. *Tools → Board*:
+   - oryginalne **Arduino Nano ESP32**: wybierz tę płytkę (pakiet *Arduino ESP32 Boards*);
+   - klon ESP32-S3 w formacie Nano: **ESP32S3 Dev Module** (pakiet *esp32* by Espressif) i
+     *Tools → USB CDC On Boot* → **Enabled**.
+
+   Kod sam wybiera właściwą numerację pinów (nazwy Nano albo GPIO), więc nic nie trzeba przestawiać.
 3. Otwórz `esp32/kierownica_gt/kierownica_gt.ino` i kliknij **Upload**.
 4. Test: *Serial Monitor* na 115200 baud. Po wciśnięciu przycisku zobaczysz np. `BTN 10 ON A5`.
    Komenda `INFO` wypisuje listę pinów.
