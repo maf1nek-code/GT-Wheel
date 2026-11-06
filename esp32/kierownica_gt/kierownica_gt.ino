@@ -1,14 +1,14 @@
 /*
   ===========================================================================
-   Kierownica GT - firmware ESP32 (ESP32-S3 w formacie Nano)
+   Kierownica GT - firmware ESP32 (ESP32-WROOM-32 / ESP32 DevKit)
   ===========================================================================
 
    Co robi:
      - czyta 12 przyciskow kierownicy (kazdy zwiera pin do GND),
      - eliminuje drgania stykow (debounce),
      - kazda zmiane wysyla na port szeregowy (USB), np.:
-           BTN 10 ON A5      <- przycisk 10 wcisniety (pin A5)
-           BTN 10 OFF A5     <- przycisk 10 puszczony
+           BTN 10 ON GPIO18   <- przycisk 10 wcisniety
+           BTN 10 OFF GPIO18  <- przycisk 10 puszczony
      - co 1 s wysyla pelny stan wszystkich przyciskow:
            STATE 000000000100
      - odpowiada na komendy z PC (uzywa ich program w Pythonie):
@@ -16,29 +16,24 @@
            STATE?  -> STATE ....
            INFO    -> lista przyciskow i pinow
 
-   Piny:
-     Opisy na kierownicy (A3, D8, ...) to piny klasycznego Arduino Nano.
-     Ponizej uzyte sa ich odpowiedniki GPIO w ESP32-S3 w formacie Nano
-     (Arduino Nano ESP32 i klony) - fizycznie te SAME miejsca na listwie,
-     wiec plytke wkladasz w to samo gniazdo/zlacze.
-
    Arduino IDE:
-     Plytka: "Arduino Nano ESP32" (pakiet "Arduino ESP32 Boards")
-             albo dla klona: "ESP32S3 Dev Module" (pakiet "esp32" by Espressif,
-             wtedy Tools -> USB CDC On Boot: "Enabled").
-     Kod sam wybiera wlasciwa numeracje pinow - nic nie trzeba przestawiac.
+     Board Manager: pakiet "esp32" by Espressif Systems
+     Plytka:        "ESP32 Dev Module"
      Serial Monitor: 115200 baud
+     (Windows moze potrzebowac sterownika CP210x albo CH340 - zalezy od
+      ukladu USB na plytce)
 
-   Podlaczenie przycisku:  PIN ---[ przycisk ]--- GND
-   (wewnetrzny pull-up jest wlaczony, zaden rezystor nie jest potrzebny)
+   Podlaczenie przycisku:  GPIO ---[ przycisk ]--- GND
+   (wewnetrzny pull-up jest wlaczony, zaden rezystor nie jest potrzebny;
+    wspolny przewod GND podlacz do dowolnego pinu GND na plytce)
 
-   !!! UWAGA - przyciski 6 i 7 !!!
-     Na kierownicy byly podpiete do "GND" i "VIN". W tych miejscach listwy
-     (zarowno w Nano, jak i w ESP32 Nano) sa piny ZASILANIA, nie wejscia -
-     nie da sie ich odczytac, a przycisk zwierajacy VIN z GND = zwarcie!
-     Przepnij je na najblizsze wolne piny po tej samej stronie listwy:
-        przycisk 6: z "GND" -> A4 (GPIO11)
-        przycisk 7: z "VIN" -> A0 (GPIO1)
+   Dlaczego te piny - pominiete sa piny, ktore sprawiaja problemy:
+     GPIO 0, 2, 5, 12, 15  - piny "strapping" (wcisniety przycisk przy starcie
+                             moze zablokowac uruchomienie / wgrywanie)
+     GPIO 1, 3             - TX/RX portu szeregowego (USB)
+     GPIO 6..11            - pamiec flash, nie wolno ich uzywac
+     GPIO 34..39           - tylko wejscia, BEZ wewnetrznego pull-upa
+   Zapasowe dobre piny: GPIO 13, 16, 17.
 */
 
 #include <Arduino.h>
@@ -55,44 +50,36 @@ struct Button {
   const char* pinName;
 };
 
-// PIN(nazwa_Nano, GPIO_ESP32):
-//  - plytka "Arduino Nano ESP32" -> uzywa nazwy z Nano (core sam przelicza),
-//  - kazda inna plytka ESP32-S3  -> uzywa bezposrednio numeru GPIO.
-#if defined(ARDUINO_NANO_ESP32)
-  #define PIN(nanoName, gpio) (nanoName)
-#else
-  #define PIN(nanoName, gpio) (gpio)
-#endif
-
 // Kolejnosc = numer przycisku (1..12) - zgodnie z opisami na kierownicy.
+// Lewa strona kierownicy -> lewa listwa plytki DevKit, prawa -> prawa.
 //
-//  Przycisk | Arduino Nano | ESP32 (GPIO)
-//  ---------+--------------+-------------
-//      1    |     A3       |   GPIO4
-//      2    |     A2       |   GPIO3
-//      3    |     D8       |   GPIO17
-//      4    |     D10      |   GPIO21
-//      5    |     A1       |   GPIO2
-//      6    |  (GND) A4    |   GPIO11   <- przepnij z GND na A4
-//      7    |  (VIN) A0    |   GPIO1    <- przepnij z VIN na A0
-//      8    |     A7       |   GPIO14
-//      9    |     A6       |   GPIO13
-//     10    |     A5       |   GPIO12
-//     11    |     D6       |   GPIO9
-//     12    |     D5       |   GPIO8
+//  Przycisk | stary opis (Nano) | ESP32-WROOM-32 | strona plytki
+//  ---------+-------------------+----------------+--------------
+//      1    |       A3          |    GPIO32      |  lewa
+//      2    |       A2          |    GPIO33      |  lewa
+//      3    |       D8          |    GPIO25      |  lewa
+//      4    |       D10         |    GPIO26      |  lewa
+//      5    |       A1          |    GPIO27      |  lewa
+//      6    |      (GND)        |    GPIO23      |  prawa
+//      7    |      (VIN)        |    GPIO22      |  prawa
+//      8    |       A7          |    GPIO21      |  prawa
+//      9    |       A6          |    GPIO19      |  prawa
+//     10    |       A5          |    GPIO18      |  prawa
+//     11    |       D6          |    GPIO14      |  lewa
+//     12    |       D5          |    GPIO4       |  prawa
 Button buttons[] = {
-  { PIN(A3,  4),  "A3/GPIO4"   },  //  1
-  { PIN(A2,  3),  "A2/GPIO3"   },  //  2
-  { PIN(D8,  17), "D8/GPIO17"  },  //  3
-  { PIN(D10, 21), "D10/GPIO21" },  //  4
-  { PIN(A1,  2),  "A1/GPIO2"   },  //  5
-  { PIN(A4,  11), "A4/GPIO11"  },  //  6  (na kierownicy bylo GND)
-  { PIN(A0,  1),  "A0/GPIO1"   },  //  7  (na kierownicy bylo VIN)
-  { PIN(A7,  14), "A7/GPIO14"  },  //  8
-  { PIN(A6,  13), "A6/GPIO13"  },  //  9
-  { PIN(A5,  12), "A5/GPIO12"  },  // 10
-  { PIN(D6,  9),  "D6/GPIO9"   },  // 11
-  { PIN(D5,  8),  "D5/GPIO8"   },  // 12
+  { 32, "GPIO32" },  //  1
+  { 33, "GPIO33" },  //  2
+  { 25, "GPIO25" },  //  3
+  { 26, "GPIO26" },  //  4
+  { 27, "GPIO27" },  //  5
+  { 23, "GPIO23" },  //  6
+  { 22, "GPIO22" },  //  7
+  { 21, "GPIO21" },  //  8
+  { 19, "GPIO19" },  //  9
+  { 18, "GPIO18" },  // 10
+  { 14, "GPIO14" },  // 11
+  {  4, "GPIO4"  },  // 12
 };
 
 const uint8_t NUM_BUTTONS = sizeof(buttons) / sizeof(buttons[0]);
@@ -111,8 +98,9 @@ inline bool readPressed(uint8_t i) {
   return digitalRead(buttons[i].pin) == LOW;
 }
 
-// Na natywnym USB (Nano ESP32) "Serial" jest prawdziwe tylko gdy PC ma
-// otwarty port - dzieki temu nie blokujemy petli, gdy nikt nie slucha.
+// Na ESP32-WROOM-32 (USB przez CP210x/CH340) zawsze true. Na plytkach z
+// natywnym USB (S2/S3) jest true tylko gdy PC ma otwarty port - wtedy nie
+// blokujemy petli, gdy nikt nie slucha.
 inline bool hostConnected() {
   return (bool)Serial;
 }
