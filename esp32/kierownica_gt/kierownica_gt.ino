@@ -12,9 +12,13 @@
      - co 1 s wysyla pelny stan wszystkich przyciskow:
            STATE 000000000100
      - odpowiada na komendy z PC (uzywa ich program w Pythonie):
-           PING    -> PONG KIEROWNICA_GT <wersja> <liczba_przyciskow>
+           PING    -> PONG KIEROWNICA_GT <wersja> <liczba_przyciskow> [LED <max_diod>]
            STATE?  -> STATE ....
            INFO    -> lista przyciskow i pinow
+           LEDS RRGGBBRRGGBB...  -> kolory paska LED (6 znakow hex na diode)
+           LEDS               -> zgas pasek
+     - steruje paskiem LED WS2812B (obroty, efekty) - kolory liczy program
+       na PC, ESP32 tylko je wyswietla. Bez danych przez 3 s pasek gasnie.
 
    Arduino IDE:
      Board Manager: pakiet "esp32" by Espressif Systems
@@ -33,17 +37,34 @@
      GPIO 1, 3             - TX/RX portu szeregowego (USB)
      GPIO 6..11            - pamiec flash, nie wolno ich uzywac
      GPIO 34..39           - tylko wejscia, BEZ wewnetrznego pull-upa
-   Zapasowe dobre piny: GPIO 13, 16, 17.
+   Zapasowe dobre piny: GPIO 16, 17 (GPIO 13 zajety przez pasek LED).
+
+   Pasek LED WS2812B (opcjonalny):
+     DIN  <- GPIO13 przez rezystor ok. 330 ohm
+     5V   <- pin VIN/5V plytki (przy zasilaniu z USB trzymaj niska jasnosc)
+     GND  <- GND plytki
+   Wymaga biblioteki "Adafruit NeoPixel" (Arduino IDE: Tools -> Manage
+   Libraries -> wpisz "Adafruit NeoPixel" -> Install).
+   Bez paska / biblioteki: ustaw LED_ENABLED na 0.
 */
 
+#define LED_ENABLED 1   // 1 = obsluga paska LED, 0 = wylaczona (bez biblioteki)
+
 #include <Arduino.h>
+#if LED_ENABLED
+#include <Adafruit_NeoPixel.h>
+#endif
 
 // ----------------------------- ustawienia ---------------------------------
 const char*         DEVICE_ID    = "KIEROWNICA_GT";  // Python szuka tego napisu
-const char*         FW_VERSION   = "1.0";
+const char*         FW_VERSION   = "1.1";
 const unsigned long BAUD_RATE    = 115200;
 const unsigned long DEBOUNCE_MS  = 15;    // czas stabilizacji styku
 const unsigned long HEARTBEAT_MS = 1000;  // co ile wysylac pelny stan
+
+const uint8_t       LED_PIN        = 13;    // DIN paska WS2812B
+const uint16_t      LED_MAX        = 60;    // maksymalna liczba diod
+const unsigned long LED_TIMEOUT_MS = 3000;  // brak danych z PC -> pasek gasnie
 
 struct Button {
   uint8_t     pin;
@@ -90,8 +111,16 @@ bool          lastReading[NUM_BUTTONS];   // ostatni surowy odczyt
 unsigned long lastChangeMs[NUM_BUTTONS];  // kiedy surowy odczyt sie zmienil
 unsigned long lastHeartbeatMs = 0;
 
-char    cmdBuf[32];
-uint8_t cmdLen = 0;
+// Miesci "LEDS " + 60 diod * 6 znakow hex.
+char     cmdBuf[16 + LED_MAX * 6];
+uint16_t cmdLen = 0;
+bool     cmdOverflow = false;
+
+#if LED_ENABLED
+Adafruit_NeoPixel strip(LED_MAX, LED_PIN, NEO_GRB + NEO_KHZ800);
+unsigned long lastLedFrameMs = 0;
+bool          ledsLit        = false;
+#endif
 
 inline bool readPressed(uint8_t i) {
   // INPUT_PULLUP: puszczony = HIGH, wcisniety (zwarty do GND) = LOW
@@ -112,7 +141,12 @@ void sendHello(const char* prefix) {
   Serial.print(' ');
   Serial.print(FW_VERSION);
   Serial.print(' ');
-  Serial.println(NUM_BUTTONS);
+  Serial.print(NUM_BUTTONS);
+#if LED_ENABLED
+  Serial.print(" LED ");
+  Serial.print(LED_MAX);
+#endif
+  Serial.println();
 }
 
 void sendState() {
@@ -145,8 +179,58 @@ void sendInfo() {
   }
 }
 
+#if LED_ENABLED
+int8_t hexValue(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
+void ledsOff() {
+  strip.clear();
+  strip.show();
+  ledsLit = false;
+}
+
+// hex = "RRGGBBRRGGBB..." (wielkie litery); diody bez danych gasna.
+void setLeds(const char* hex) {
+  uint16_t len = strlen(hex);
+  uint16_t count = len / 6;
+  if (count > LED_MAX) count = LED_MAX;
+
+  for (uint16_t i = 0; i < count * 6; i++) {
+    if (hexValue(hex[i]) < 0) return;  // uszkodzona ramka - zostaw poprzednia
+  }
+
+  strip.clear();
+  for (uint16_t i = 0; i < count; i++) {
+    const char* p = hex + i * 6;
+    strip.setPixelColor(i,
+                        (hexValue(p[0]) << 4) | hexValue(p[1]),
+                        (hexValue(p[2]) << 4) | hexValue(p[3]),
+                        (hexValue(p[4]) << 4) | hexValue(p[5]));
+  }
+  strip.show();
+  ledsLit        = count > 0;
+  lastLedFrameMs = millis();
+}
+#endif
+
 void processCommand(char* cmd) {
   for (char* p = cmd; *p; p++) *p = toupper(*p);
+
+#if LED_ENABLED
+  if (strncmp(cmd, "LEDS", 4) == 0 && (cmd[4] == '\0' || cmd[4] == ' ')) {
+    const char* hex = cmd + 4;
+    while (*hex == ' ') hex++;
+    if (*hex == '\0') {
+      ledsOff();
+    } else {
+      setLeds(hex);
+    }
+    return;
+  }
+#endif
 
   if (strcmp(cmd, "PING") == 0) {
     sendHello("PONG");
@@ -161,18 +245,22 @@ void handleSerialInput() {
   while (Serial.available() > 0) {
     char c = (char)Serial.read();
     if (c == '\n' || c == '\r') {
-      if (cmdLen > 0) {
+      if (cmdLen > 0 && !cmdOverflow) {
         cmdBuf[cmdLen] = '\0';
         processCommand(cmdBuf);
-        cmdLen = 0;
       }
+      cmdLen      = 0;
+      cmdOverflow = false;  // za dluga linia jest odrzucana w calosci
     } else if (cmdLen < sizeof(cmdBuf) - 1) {
       cmdBuf[cmdLen++] = c;
+    } else {
+      cmdOverflow = true;
     }
   }
 }
 
 void setup() {
+  Serial.setRxBufferSize(1024);  // ramka LED dla 60 diod ma ~370 znakow
   Serial.begin(BAUD_RATE);
 
   unsigned long now = millis();
@@ -180,6 +268,12 @@ void setup() {
     pinMode(buttons[i].pin, INPUT_PULLUP);
   }
   delay(5);  // chwila na ustabilizowanie pull-upow
+
+#if LED_ENABLED
+  strip.begin();
+  strip.clear();
+  strip.show();
+#endif
   for (uint8_t i = 0; i < NUM_BUTTONS; i++) {
     stableState[i]  = readPressed(i);
     lastReading[i]  = stableState[i];
@@ -220,6 +314,13 @@ void loop() {
     lastHeartbeatMs = now;
     sendState();
   }
+
+#if LED_ENABLED
+  // PC przestal wysylac (program zamkniety, kabel) - gasimy pasek.
+  if (ledsLit && millis() - lastLedFrameMs >= LED_TIMEOUT_MS) {
+    ledsOff();
+  }
+#endif
 
   delay(1);
 }
