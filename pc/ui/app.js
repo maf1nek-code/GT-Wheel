@@ -39,7 +39,7 @@ const STANY = [
 const SIM_STANU = { zmiana_biegu: 'jazda', pit_limiter: 'pit', flaga_zolta: 'zolta', flaga_niebieska: 'niebieska', brak_gry: 'brak_gry' };
 const KROTKO_PIT = { caly: 'Cały pasek', naprzemiennie: 'Co druga', polowki: 'Połówki' };
 const KROTKO_TRYB = { wylaczone: 'Zgaszone', staly: 'Stały', oddech: 'Oddech', skaner: 'Skaner' };
-const NAZWY_SIM = { jazda: 'Jazda', pit: 'Pit limiter', zolta: 'Flaga żółta', niebieska: 'Flaga niebieska', brak_gry: 'Gra wyłączona' };
+const NAZWY_SIM = { gra: 'Gra na żywo', jazda: 'Jazda', pit: 'Pit limiter', zolta: 'Flaga żółta', niebieska: 'Flaga niebieska', brak_gry: 'Gra wyłączona' };
 
 /* ------------------------------------------------------------ narzędzia */
 function getPath(o, path) { return path.split('.').reduce((a, k) => (a == null ? a : a[k]), o); }
@@ -901,6 +901,7 @@ function rysujKlatke() {
       $('#rpmVal').textContent = Math.round(proc);
     }
     $('#thrRpm').style.left = `${proc}%`;
+    if (m.gra) renderGra(m.gra);
     const [tekst, kl] = OPIS_PASKA[m.pasek] || ['', ''];
     const ds = $('#deviceState');
     if (ds.textContent !== tekst) { ds.textContent = tekst; ds.className = kl; }
@@ -918,8 +919,28 @@ function renderSim() {
   auto.innerHTML = `<svg><use href="#${s.auto ? 'i-pause' : 'i-play'}"/></svg>`;
   $('#simSend').checked = s.wysylaj;
   const rpmAktywne = s.stan === 'jazda' || s.stan === 'zolta' || s.stan === 'niebieska';
+  if (S.gra) renderGra(S.gra);
   $('#simRpm').disabled = !rpmAktywne;
   auto.disabled = !rpmAktywne;
+}
+
+function renderGra(g) {
+  S.gra = g;
+  const box = $('#gameInfo');
+  const stan = g.aktywna ? 'jazda' : g.gra ? (/format/i.test(g.opis) ? 'blad' : 'menu') : 'brak';
+  if (box.dataset.stan !== stan) box.dataset.stan = stan;
+  ustawTekst('giTitle', g.gra ? g.nazwa : 'Nie wykryto gry');
+  ustawTekst('giText', g.gra ? g.opis : `${g.opis} Uruchom grę i wyjedź na tor – diody pokażą obroty.`);
+  const zJazdy = g.aktywna;
+  ustawTekst('giRpm', zJazdy ? `${g.rpm.toLocaleString('pl-PL')} / ${g.max_rpm ? g.max_rpm.toLocaleString('pl-PL') : '?'}` : '—');
+  ustawTekst('giGear', zJazdy && g.bieg != null ? ({ '-1': 'R', 0: 'N' }[g.bieg] || String(g.bieg)) : '—');
+  const pit = $('#giPit');
+  ustawTekst('giPit', zJazdy ? (g.pit_limiter ? 'TAK' : 'nie') : '—');
+  pit.className = zJazdy && g.pit_limiter ? 'tak' : '';
+  const fl = $('#giFlag');
+  ustawTekst('giFlag', zJazdy ? ({ zolta: 'żółta', niebieska: 'niebieska' }[g.flaga] || 'brak') : '—');
+  fl.className = zJazdy && g.flaga ? g.flaga : '';
+  $('#giUse').hidden = !(g.aktywna && S.sim.stan !== 'gra');
 }
 
 let simTimer = null, simDoWyslania = null;
@@ -1220,6 +1241,7 @@ function podepnij() {
     const b = e.target.closest('button[data-v]');
     if (b) { S.sim.stan = b.dataset.v; renderSim(); wyslijSim({ stan: b.dataset.v }); }
   });
+  $('#giUse').addEventListener('click', () => { S.sim.stan = 'gra'; renderSim(); wyslijSim({ stan: 'gra' }); });
   $('#simAuto').addEventListener('click', () => { S.sim.auto = !S.sim.auto; renderSim(); wyslijSim({ auto: S.sim.auto }); });
   $('#simSend').addEventListener('change', (e) => wyslijSim({ wysylaj: e.target.checked }));
   const rpm = $('#simRpm');

@@ -16,6 +16,7 @@ przez USB (port szeregowy), a program w Pythonie zamienia je na wirtualny kontro
 | `pc/konfigurator.py` | konfigurator: obsługa kierownicy i efektów LED w tle, otwiera okno z `pc/ui` |
 | `pc/ui/` | wygląd konfiguratora (HTML/CSS/JS) |
 | `pc/led_efekty.py` | liczenie efektów LED (obroty, zmiana biegu, pit limiter, flagi) |
+| `pc/telemetria.py` | odczyt telemetrii z AC, ACC i Le Mans Ultimate |
 | `pc/requirements.txt` | biblioteki Pythona |
 | `Kierownica_GT.bat` | uruchamianie dwuklikiem (sam instaluje biblioteki za 1. razem) |
 | `Konfigurator_GT.bat` | uruchamianie konfiguratora dwuklikiem |
@@ -143,9 +144,43 @@ lewa strona 1–5 i lewe pokrętło 11, prawa strona 6–10 i prawe pokrętło 1
 
 `pc/leds.json` i profile nie są w gicie, więc aktualizacje ich nie nadpiszą.
 
-> Telemetria z gier (obroty w trakcie jazdy) to następny krok.
+W podglądzie jest też tryb **Gra na żywo**: gdy gra działa, panel pod paskiem pokazuje, co program
+z niej odczytuje (obroty, bieg, pit limiter, flaga), a pasek świeci jak w czasie jazdy. Tak najłatwiej
+ustawić progi pod konkretne auto.
 
-## 4. Uruchomienie
+## 4. Diody w czasie gry (telemetria)
+
+Obsługiwane gry: **Assetto Corsa**, **Assetto Corsa Competizione** i **Le Mans Ultimate**.
+Uruchom grę i **`Kierownica_GT.bat`** (jak zawsze). Program sam wykryje grę i będzie sterował paskiem
+według ustawień z konfiguratora (`pc/leds.json`):
+
+- obroty → kolejne diody, od progu „zmiana biegu” cały pasek miga,
+- pit limiter, flaga żółta i niebieska → efekty ze „Stanów specjalnych”,
+- menu, pauza, powtórka albo brak gry → efekt „Gra wyłączona”.
+
+Zmiany zapisane w konfiguratorze są wczytywane w trakcie jazdy, bez restartu. Konfigurator i
+`Kierownica_GT.bat` nie mogą działać jednocześnie (jeden port COM), więc ustaw diody, zamknij
+konfigurator, potem uruchom grę z `Kierownica_GT.bat`. Opcja `--bez-diod` wyłącza sterowanie paskiem.
+
+| Gra | Skąd dane | Co trzeba zrobić |
+|---|---|---|
+| Assetto Corsa | wbudowana pamięć współdzielona | nic |
+| Assetto Corsa Competizione | wbudowana pamięć współdzielona | nic |
+| Le Mans Ultimate | wtyczka rF2SharedMemoryMapPlugin | włączyć wtyczkę (poniżej) |
+
+**Le Mans Ultimate – włączenie wtyczki** (tylko jeśli konfigurator pisze, że gra „nie udostępnia
+danych”; jeśli używasz SimHub albo CrewChief, zwykle jest już włączona):
+
+1. Pobierz `rFactor2SharedMemoryMapPlugin64.dll` (projekt *rF2SharedMemoryMapPlugin* autora
+   TheIronWolfModding na GitHubie) i skopiuj go do folderu gry `Le Mans Ultimate\Plugins\`.
+2. Uruchom grę raz i zamknij. W pliku `Le Mans Ultimate\UserData\player\CustomPluginVariables.JSON`
+   przy `rFactor2SharedMemoryMapPlugin64.dll` ustaw `" Enabled": 1`.
+3. Uruchom grę ponownie.
+
+Sprawdzenie bez kierownicy (w folderze projektu, po pierwszym uruchomieniu `.bat`):
+`pc\.venv\Scripts\python.exe pc\telemetria.py` wypisuje na żywo odczyty z gry.
+
+## 5. Uruchomienie
 
 Kliknij dwukrotnie **`Kierownica_GT.bat`**. Wymagany jest Python 3 z <https://python.org>, z
 zaznaczoną opcją *Add python.exe to PATH*.

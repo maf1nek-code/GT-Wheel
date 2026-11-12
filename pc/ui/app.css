@@ -465,6 +465,31 @@ input[type="range"]:disabled { opacity: .4; cursor: default; }
 .rpm-val b { font: 750 28px var(--font-display); font-variant-numeric: tabular-nums; min-width: 48px; text-align: right; }
 .rpm-val span { font-size: 12px; color: var(--muted); }
 
+.seg-live { color: var(--text-2); }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
+.seg-live[aria-checked="true"] .live-dot, .game-info[data-stan="jazda"] .gi-dot { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); animation: pulse-ok 1.6s ease-in-out infinite; }
+#giUse .live-dot { background: var(--ok); }
+@keyframes pulse-ok { 0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, .55); } 50% { box-shadow: 0 0 0 5px rgba(34, 197, 94, 0); } }
+.game-info {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 24px; align-items: center;
+  margin-top: 18px; padding: 12px 16px; border-radius: 14px; background: var(--bg-2); border: 1px solid var(--line);
+}
+.gi-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.gi-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dim); flex: none; }
+.game-info[data-stan="menu"] .gi-dot { background: var(--warn); }
+.game-info[data-stan="blad"] .gi-dot { background: var(--err); }
+.gi-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.gi-text span { font-size: 12.5px; color: var(--muted); }
+.gi-head .btn { margin-left: auto; }
+.gi-stats { display: grid; grid-template-columns: repeat(4, minmax(78px, auto)); gap: 4px 20px; }
+.gi-stats div { display: flex; flex-direction: column; line-height: 1.2; }
+.gi-stats small { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+.gi-stats b { font: 700 15px var(--font-display); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gi-stats b.zolta { color: #ffc000; }
+.gi-stats b.niebieska { color: #5b9bff; }
+.gi-stats b.tak { color: #ff6bd5; }
+@media (max-width: 1180px) { .game-info { grid-template-columns: 1fr; } }
+
 .led-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 20px; margin-top: 20px; align-items: start; }
 .col { display: grid; gap: 20px; }
 

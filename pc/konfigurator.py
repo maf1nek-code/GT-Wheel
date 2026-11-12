@@ -45,6 +45,7 @@ except ImportError:
     sys.exit(1)
 
 import led_efekty as fx
+import telemetria
 from kierownica import list_candidate_ports, probe
 
 KATALOG = Path(__file__).resolve().parent
@@ -67,7 +68,7 @@ TYPY_PLIKOW = {
     ".ico": "image/x-icon",
 }
 
-STANY_SYMULACJI = ("jazda", "pit", "zolta", "niebieska", "brak_gry")
+STANY_SYMULACJI = ("gra", "jazda", "pit", "zolta", "niebieska", "brak_gry")
 ZAREZERWOWANE_NAZWY = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(10)),
                        *(f"lpt{i}" for i in range(10))}
 
@@ -149,6 +150,8 @@ class Aplikacja:
         # symulacja w podgladzie
         self.sim = {"stan": "jazda", "obroty": 0.8, "auto": True, "wysylaj": True}
         self._t0 = time.monotonic()
+        self.czytnik = telemetria.Czytnik()
+        self.gra = telemetria.Stan()
 
         # kierownica
         self.port_wybrany = port
@@ -460,15 +463,20 @@ class Aplikacja:
 
     def _klatka(self) -> None:
         t = time.monotonic() - self._t0
+        self.gra = self.czytnik.odczyt()
         with self.lock:
             u = fx.popraw_ustawienia(self.u)
-            if self.sim["auto"]:
+            if self.sim["stan"] == "gra":
+                self.sim["obroty"] = self.gra.obroty
+            elif self.sim["auto"]:
                 cykl = t % 4.5
                 self.sim["obroty"] = (min(1.0, 0.45 + 0.57 * (cykl / 3.5) ** 1.3)
                                       if cykl < 3.5 else 1.0)
             sim = dict(self.sim)
 
-        glowna = fx.klatka(u, self._telemetria(sim["stan"], sim["obroty"]), t)
+        tel = self.gra.telemetria() if sim["stan"] == "gra" else \
+            self._telemetria(sim["stan"], sim["obroty"])
+        glowna = fx.klatka(u, tel, t)
         mini = {
             "zmiana_biegu": fx.klatka(u, self._telemetria("jazda", 1.0), t),
             "pit_limiter": fx.klatka(u, self._telemetria("pit", 0.5), t),
@@ -483,6 +491,7 @@ class Aplikacja:
             "obroty": round(sim["obroty"], 4),
             "mini": {k: _hex_paska(v) for k, v in mini.items()},
             "pasek": self.status_paska,
+            "gra": self.gra.slownik(),
         }, wazne=False)
 
     def _na_pasek(self, kolory: list, u: dict, sim: dict) -> None:
@@ -517,6 +526,7 @@ class Aplikacja:
     def zamknij(self) -> None:
         self.koniec.set()
         self.zmiana.set()
+        self.czytnik.zamknij()
         if self._pasek_zapalony:
             self.wyslij_do_kierownicy("LEDS")
 
