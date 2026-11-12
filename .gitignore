@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 pc/.venv/
 pc/leds.json
+pc/profile_led/

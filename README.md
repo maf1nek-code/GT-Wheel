@@ -13,7 +13,8 @@ przez USB (port szeregowy), a program w Pythonie zamienia je na wirtualny kontro
 |---|---|
 | `esp32/kierownica_gt/kierownica_gt.ino` | firmware do wgrania z Arduino IDE |
 | `pc/kierownica.py` | program na PC: autowykrywanie portu + emulacja kontrolera |
-| `pc/konfigurator.py` | okienko konfiguracji: test przycisków i ustawienia diod LED |
+| `pc/konfigurator.py` | konfigurator: obsługa kierownicy i efektów LED w tle, otwiera okno z `pc/ui` |
+| `pc/ui/` | wygląd konfiguratora (HTML/CSS/JS) |
 | `pc/led_efekty.py` | liczenie efektów LED (obroty, zmiana biegu, pit limiter, flagi) |
 | `pc/requirements.txt` | biblioteki Pythona |
 | `Kierownica_GT.bat` | uruchamianie dwuklikiem (sam instaluje biblioteki za 1. razem) |
@@ -108,32 +109,35 @@ Domyślny tryb `auto` używa vJoy, a gdy go nie ma, pada Xbox.
 
 ## 3. Konfigurator (test przycisków i diody LED)
 
-Kliknij dwukrotnie **`Konfigurator_GT.bat`**. Okno samo znajdzie kierownicę.
+Kliknij dwukrotnie **`Konfigurator_GT.bat`**. Otworzy się osobne okno konfiguratora (w Microsoft
+Edge w trybie aplikacji, bez pasków przeglądarki – Edge jest w każdym Windows 10/11).
+Okno samo znajdzie kierownicę. Zamknięcie okna kończy program.
+
 Port COM może mieć otwarty tylko jeden program, więc najpierw zamknij `Kierownica_GT.bat`
-i Serial Monitor.
+i Serial Monitor. Status połączenia i wybór portu są w prawym górnym rogu.
 
-**Zakładka „Test przycisków”**: wciskaj po kolei przyciski. Wciśnięty kafelek świeci na zielono,
-sprawdzony dostaje ✓, a pasek postępu pokazuje, ile przycisków już działa. Przycisk wciśnięty
-już w chwili połączenia jest oznaczony na pomarańczowo, bo może to oznaczać zwarcie pinu do GND.
-Dziennik pokazuje każde wciśnięcie i czas trzymania.
+**Test przycisków**: rysunek kierownicy z przyciskami. Wciśnięty przycisk świeci na zielono,
+sprawdzony dostaje ✓, a licznik pokazuje, ile przycisków już działa. Przycisk wciśnięty już
+w chwili połączenia świeci na pomarańczowo, bo może to oznaczać zwarcie pinu do GND. Obok jest
+lista pinów i dziennik z czasem trzymania każdego przycisku.
 
-**Zakładka „Diody LED”**:
+**Diody LED**:
 
-- liczba diod, jasność, kierunek zapalania (od lewej, od prawej, od środka, z boków),
-- kolor każdej diody (klik zaznacza, dwuklik zmienia kolor), gotowe zestawy kolorów i własny gradient,
-- progi: przy ilu % obrotów zapala się pierwsza dioda, a przy ilu wszystkie,
-- stany specjalne z własnym kolorem i szybkością migania: zmiana biegu (limiter), pit limiter
-  (3 wzory), flaga żółta i niebieska (na skrajnych diodach albo całym pasku), gra wyłączona
-  (zgaszone, stały kolor, oddech, skaner),
-- podgląd na żywo i symulacja jazdy bez uruchamiania gry. Jeśli kierownica jest podłączona,
-  podgląd świeci też na prawdziwym pasku.
+- podgląd na żywo i symulacja: jazda (obroty ręcznie albo automatycznie), pit limiter, flagi,
+  gra wyłączona; przełącznik **Na kierownicy** pokazuje to samo na prawdziwym pasku,
+- liczba diod, jasność (z wyliczeniem poboru prądu), kierunek zapalania,
+- kolory: zaznaczasz diody myszką (przeciągnięcie, Shift = zakres, Ctrl = pojedyncze) i wybierasz
+  kolor; są gotowe zestawy, własny gradient i odbicie lustrzane,
+- progi obrotów na jednym suwaku z trzema znacznikami (pierwsza dioda, wszystkie, zmiana biegu),
+- stany specjalne z podglądem każdego z nich: zmiana biegu, pit limiter (3 wzory), flaga żółta
+  i niebieska (na skrajnych diodach albo całym pasku), gra wyłączona (zgaszone, stały, oddech, skaner),
+- **Zapisz** (Ctrl+S) zapisuje do `pc/leds.json` – z tego pliku będzie korzystał program w czasie gry,
+- **Profile**: osobne zestawy ustawień, np. dla każdej gry (`pc/profile_led/`), plus eksport
+  i import do pliku.
 
-Ustawienia zapisują się do `pc/leds.json` (przycisk **Zapisz** albo Ctrl+S). Plik nie jest w gicie,
-więc aktualizacje go nie nadpiszą. „Zapisz jako…” pozwala trzymać kilka profili, np. osobno dla
-każdej gry.
+`pc/leds.json` i profile nie są w gicie, więc aktualizacje ich nie nadpiszą.
 
-> Telemetria z gier (obroty w trakcie jazdy) to następny krok. Konfigurator już przygotowuje
-> ustawienia, z których będzie korzystał program w czasie gry.
+> Telemetria z gier (obroty w trakcie jazdy) to następny krok.
 
 ## 4. Uruchomienie
 
