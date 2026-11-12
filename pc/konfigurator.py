@@ -50,6 +50,7 @@ from kierownica import list_candidate_ports, probe
 KATALOG = Path(__file__).resolve().parent
 KATALOG_UI = KATALOG / "ui"
 KATALOG_PROFILI = KATALOG / "profile_led"
+PLIK_UKLADU = KATALOG / "uklad_kierownicy.json"   # ktory przycisk jest w ktorym miejscu rysunku
 PREFEROWANY_PORT_HTTP = 47823
 
 SILENCE_TIMEOUT_S = 5.0     # ESP wysyla STATE co 1 s - cisza = rozlaczenie
@@ -217,6 +218,29 @@ class Aplikacja:
                 wynik.append({"nazwa": p.stem, "kolory": [], "liczba": 0, "blad": True})
         return wynik
 
+    # --------------------------------------------------------- uklad rysunku
+    @staticmethod
+    def wczytaj_uklad() -> dict | None:
+        try:
+            dane = json.loads(PLIK_UKLADU.read_text(encoding="utf-8"))
+            return Aplikacja.popraw_uklad(dane.get("miejsca", {}))
+        except (OSError, ValueError, AttributeError):
+            return None
+
+    @staticmethod
+    def popraw_uklad(miejsca) -> dict:
+        if not isinstance(miejsca, dict):
+            raise ValueError("Zły układ przycisków.")
+        wynik: dict[str, int] = {}
+        for k, v in miejsca.items():
+            if not isinstance(k, str) or not re.fullmatch(r"[a-z_]{1,30}", k):
+                raise ValueError("Zła nazwa miejsca.")
+            if isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 64:
+                continue
+            if v not in wynik.values():
+                wynik[k] = v
+        return wynik
+
     # ------------------------------------------------------------- migawka
     def migawka(self) -> dict:
         with self.lock:
@@ -232,6 +256,7 @@ class Aplikacja:
                 "piny": self.piny,
                 "bity": self.bity,
                 "blad": self.blad_wczytania,
+                "uklad": self.wczytaj_uklad(),
                 "opcje": {
                     "kierunki": fx.KIERUNKI,
                     "wzory_pit": fx.WZORY_PIT,
@@ -695,6 +720,20 @@ def stworz_obsluge(app: Aplikacja, port_http: list):
                     raise BladZapytania("Zły port.")
                 app.polacz(port)
                 return {}
+
+            if sciezka == "/api/uklad":
+                if d.get("domyslny"):
+                    if PLIK_UKLADU.exists():
+                        PLIK_UKLADU.unlink()
+                    uklad = None
+                else:
+                    uklad = app.popraw_uklad(d.get("miejsca"))
+                    tmp = PLIK_UKLADU.with_suffix(".tmp")
+                    tmp.write_text(json.dumps({"miejsca": uklad}, indent=2, ensure_ascii=False),
+                                   encoding="utf-8")
+                    tmp.replace(PLIK_UKLADU)
+                app.radio.wyslij({"t": "uklad", "uklad": uklad})
+                return {"uklad": uklad}
 
             if sciezka == "/api/rozlacz":
                 app.rozlacz()

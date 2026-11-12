@@ -116,10 +116,16 @@ Okno samo znajdzie kierownicę. Zamknięcie okna kończy program.
 Port COM może mieć otwarty tylko jeden program, więc najpierw zamknij `Kierownica_GT.bat`
 i Serial Monitor. Status połączenia i wybór portu są w prawym górnym rogu.
 
-**Test przycisków**: rysunek kierownicy z przyciskami. Wciśnięty przycisk świeci na zielono,
-sprawdzony dostaje ✓, a licznik pokazuje, ile przycisków już działa. Przycisk wciśnięty już
-w chwili połączenia świeci na pomarańczowo, bo może to oznaczać zwarcie pinu do GND. Obok jest
-lista pinów i dziennik z czasem trzymania każdego przycisku.
+**Test przycisków**: rysunek tej kierownicy (karbonowa płyta, pasek 16 diod, ekran, 10 kolorowych
+przycisków i 3 pokrętła). Wciśnięty przycisk świeci, sprawdzony dostaje ✓, a ekran na rysunku pokazuje
+ostatnio wciśnięty przycisk, jego pin, czas trzymania i postęp testu. Pasek diod na rysunku świeci tak
+samo jak prawdziwy. Przycisk wciśnięty już w chwili połączenia pulsuje na pomarańczowo – może to
+oznaczać zwarcie pinu do GND. Obok jest lista pinów i dziennik.
+
+**Przypisz przyciski**: ustala, który numer przycisku z firmware jest w którym miejscu rysunku.
+Klikasz miejsce na rysunku i wciskasz ten przycisk na kierownicy (program sam przechodzi do następnego
+miejsca). Układ zapisuje się w `pc/uklad_kierownicy.json`. Domyślny układ jest zgadnięty z tabeli pinów:
+lewa strona 1–5 i lewe pokrętło 11, prawa strona 6–10 i prawe pokrętło 12.
 
 **Diody LED**:
 

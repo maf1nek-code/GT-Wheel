@@ -164,10 +164,13 @@ function renderStatus() {
     <dt>Pasek LED</dt><dd>${info.max_diod ? `do ${info.max_diod} diod` : 'brak obsługi (stary firmware)'}</dd>` : '';
   $('#btnDisconnect').disabled = !st.chce;
 
-  // nakładka na kierownicy
+  // pasek stanu pod kierownicą
   const ov = $('#wheelOverlay');
   const polaczono = st.stan === 'polaczono';
   ov.classList.toggle('hide', polaczono);
+  $('#wheelWrap').classList.toggle('off', !polaczono);
+  renderEkran();
+  if (S.przyp.wl) renderPrzypisywanie();
   if (!polaczono) {
     const ikona = $('#ovIcon');
     const tytuly = {
@@ -175,6 +178,7 @@ function renderStatus() {
       utracono: 'Utracono połączenie', rozlaczono: 'Kierownica rozłączona',
     };
     $('#ovTitle').textContent = tytuly[st.stan] || st.tekst;
+    ov.dataset.stan = st.stan;
     $('#ovText').textContent = st.stan === 'szukam' ? 'Podłącz kierownicę kablem USB.'
       : st.stan === 'rozlaczono' ? 'Kliknij „Połącz”, aby wrócić do testu.'
       : st.tekst + (st.stan !== 'zajety' ? ' Szukam dalej…' : ' Próbuję ponownie co 2 s.');
@@ -227,56 +231,123 @@ function zamknijPopover() {
 }
 
 /* ======================================================= TEST PRZYCISKÓW */
-const UKLAD_12 = {
-  1: [222, 205], 2: [262, 205], 3: [222, 255], 4: [262, 255], 5: [222, 305], 11: [262, 305],
-  6: [378, 205], 7: [418, 205], 8: [378, 255], 9: [418, 255], 10: [378, 305], 12: [418, 305],
+// Miejsca na rysunku kierownicy (współrzędne w układzie 1205 × 700, jak zdjęcie).
+const MIEJSCA = [
+  { id: 'l_zolty', nazwa: 'żółty, lewy górny', x: 165, y: 128, r: 30, kolor: '#f2c014', jasny: true },
+  { id: 'l_czarny', nazwa: 'czarny, lewy górny', x: 243, y: 142, r: 26, kolor: '#24262a' },
+  { id: 'l_czerwony', nazwa: 'czerwony, lewa kolumna', x: 330, y: 372, r: 29, kolor: '#e0352b' },
+  { id: 'l_bialy', nazwa: 'biały, lewa kolumna', x: 330, y: 456, r: 29, kolor: '#ececec', jasny: true },
+  { id: 'l_zielony', nazwa: 'zielony, lewa kolumna', x: 330, y: 540, r: 29, kolor: '#2e9e44' },
+  { id: 'p_czarny', nazwa: 'czarny, prawy górny', x: 962, y: 142, r: 26, kolor: '#24262a' },
+  { id: 'p_niebieski', nazwa: 'niebieski, prawy górny', x: 1040, y: 128, r: 30, kolor: '#2f6fd6' },
+  { id: 'p_czerwony', nazwa: 'czerwony, prawa kolumna', x: 875, y: 372, r: 29, kolor: '#e0352b' },
+  { id: 'p_bialy', nazwa: 'biały, prawa kolumna', x: 875, y: 456, r: 29, kolor: '#ececec', jasny: true },
+  { id: 'p_pomaranczowy', nazwa: 'pomarańczowy, prawa kolumna', x: 875, y: 540, r: 29, kolor: '#f06a1c' },
+  { id: 'pok_l', nazwa: 'lewe pokrętło', x: 470, y: 524, r: 33, pokretlo: true },
+  { id: 'pok_s', nazwa: 'środkowe pokrętło', x: 602, y: 524, r: 33, pokretlo: true },
+  { id: 'pok_p', nazwa: 'prawe pokrętło', x: 735, y: 524, r: 33, pokretlo: true },
+];
+// Zgadnięte z README: lewa strona płytki = 1–5 i 11, prawa = 6–10 i 12.
+const UKLAD_DOMYSLNY = {
+  l_zolty: 1, l_czarny: 2, l_czerwony: 3, l_bialy: 4, l_zielony: 5,
+  p_czarny: 6, p_niebieski: 7, p_czerwony: 8, p_bialy: 9, p_pomaranczowy: 10, pok_l: 11, pok_p: 12,
 };
+S.uklad = { ...UKLAD_DOMYSLNY };
+S.przyp = { wl: false, miejsce: null };
+S.ostatni = null;
+S.ostrzezone = new Set();
 
-function pozycjaPrzycisku(n) {
-  if (UKLAD_12[n]) return UKLAD_12[n];
-  const i = n - 13;
-  if (i < 6) return [230 + i * 36, 343];
-  return null;
+const miejsceNumeru = (n) => MIEJSCA.find((m) => S.uklad[m.id] === n) || null;
+
+const LEWY_UCHWYT = 'M150 44 C200 34 290 34 322 52 C340 64 340 90 338 120 L336 205 C335 232 318 240 296 240 '
+  + 'L268 242 C246 244 240 258 240 280 L240 322 C240 346 256 356 280 358 L292 360 L292 588 '
+  + 'C262 594 232 600 214 612 C200 650 180 684 140 690 C100 694 66 670 54 620 C36 540 34 420 46 300 '
+  + 'C54 220 80 150 118 100 C128 70 136 52 150 44 Z';
+
+function sruba(x, y, r = 11) {
+  return `<g transform="translate(${x} ${y})"><circle class="k-screw" r="${r}"/><path class="k-screw-hex" d="M${-r * 0.45} 0 L${-r * 0.22} ${-r * 0.39} L${r * 0.22} ${-r * 0.39} L${r * 0.45} 0 L${r * 0.22} ${r * 0.39} L${-r * 0.22} ${r * 0.39} Z"/></g>`;
 }
 
 function budujKolo() {
   const svg = $('#wheel');
-  const n = S.nBtn;
-  let przyciski = '';
-  for (let i = 1; i <= n; i++) {
-    const p = pozycjaPrzycisku(i);
-    if (!p) continue;
-    przyciski += `<g class="wb" data-n="${i}" transform="translate(${p[0]} ${p[1]})"><title>Przycisk ${i}</title>
-      <g class="wb-in"><circle class="wb-glow" r="22"/><circle class="wb-ring" r="20.5"/><circle class="wb-body" r="17"/><text class="wb-num">${i}</text></g>
-      <g transform="translate(14 -14)"><g class="wb-check"><circle r="7.5"/><path d="M-3.4 0.2 L-1 2.6 L3.4 -2.2"/></g></g></g>`;
-  }
+  const miejsca = MIEJSCA.map((m) => {
+    const czapka = m.pokretlo
+      ? `<circle class="k-knurl" r="${m.r}"/><circle r="${m.r - 8}" fill="url(#knobGrad)"/><circle r="${m.r - 8}" fill="url(#capShine)" opacity=".35"/>`
+      : `<circle class="ws-cap" r="${m.r}" fill="${m.kolor}"/><circle r="${m.r}" fill="url(#capShine)"/>`;
+    return `<g class="ws${m.pokretlo ? ' knob' : ''}" data-id="${m.id}" transform="translate(${m.x} ${m.y})"><title></title>
+      <circle class="ws-halo" r="${m.r + 14}"/>
+      <circle class="k-bezel" r="${m.r + 7}"/>
+      <circle class="ws-sel" r="${m.r + 13}"/>
+      <g class="ws-in">${czapka}<text class="ws-num${m.jasny ? ' ciemny' : ''}"></text></g>
+      <g transform="translate(${(m.r * 0.74).toFixed(1)} ${(-m.r * 0.74).toFixed(1)})"><g class="ws-check"><circle r="10"/><path d="M-4.4 0.3 L-1.3 3.4 L4.4 -2.8"/></g></g>
+    </g>`;
+  }).join('');
+
+  const sruby = [[330, 182], [875, 182], [536, 556], [669, 556], [96, 330], [80, 520], [120, 642], [1109, 330], [1125, 520], [1085, 642]]
+    .map(([x, y]) => sruba(x, y, x < 200 || x > 1000 ? 9 : 11)).join('');
+
   svg.innerHTML = `
     <defs>
-      <linearGradient id="rimGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#434c58"/><stop offset=".45" stop-color="#2a3039"/><stop offset="1" stop-color="#1a1e24"/></linearGradient>
-      <pattern id="grip" width="6" height="6" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r=".9" fill="#3d4651"/></pattern>
-      <pattern id="carbon" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#14181d"/><rect width="4" height="4" fill="#1a1f26"/><rect x="4" y="4" width="4" height="4" fill="#1a1f26"/></pattern>
-      <linearGradient id="plateShine" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".07"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient>
-      <radialGradient id="btnGrad" cx=".4" cy=".35" r=".8"><stop offset="0" stop-color="#3b434d"/><stop offset="1" stop-color="#1b2027"/></radialGradient>
-      <filter id="btnGlow" x="-1" y="-1" width="3" height="3"><feGaussianBlur stdDeviation="7"/></filter>
-      <filter id="ledGlow" x="-2" y="-2" width="5" height="5"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      <pattern id="carbon" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width="14" height="14" fill="#141619"/><rect width="7" height="7" fill="#1f2226"/><rect x="7" y="7" width="7" height="7" fill="#1f2226"/>
+      </pattern>
+      <linearGradient id="carbonShine" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#fff" stop-opacity=".10"/><stop offset=".38" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".04"/>
+      </linearGradient>
+      <pattern id="druk" width="8" height="4" patternUnits="userSpaceOnUse">
+        <rect width="8" height="4" fill="#131315"/><rect width="8" height="1.2" fill="#1a1a1d"/>
+      </pattern>
+      <linearGradient id="gripShade" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#000" stop-opacity=".55"/><stop offset=".45" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".15"/>
+      </linearGradient>
+      <radialGradient id="capShine" cx=".36" cy=".3" r=".78">
+        <stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".42" stop-color="#fff" stop-opacity=".07"/><stop offset="1" stop-color="#000" stop-opacity=".32"/>
+      </radialGradient>
+      <radialGradient id="knobGrad" cx=".4" cy=".35" r=".8"><stop offset="0" stop-color="#3a3d42"/><stop offset="1" stop-color="#111214"/></radialGradient>
+      <linearGradient id="screenGlass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".07"/><stop offset=".35" stop-color="#fff" stop-opacity="0"/></linearGradient>
+      <filter id="halo" x="-1" y="-1" width="3" height="3"><feGaussianBlur stdDeviation="9"/></filter>
+      <filter id="ledGlow" x="-2" y="-2" width="5" height="5"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      <filter id="cien" x="-.1" y="-.1" width="1.2" height="1.3"><feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000" flood-opacity=".65"/></filter>
+      <path id="uchwyt" d="${LEWY_UCHWYT}"/>
     </defs>
-    <path class="w-spoke" d="M126 262 L194 246 L194 318 L136 326 Z"/>
-    <path class="w-spoke" d="M514 262 L446 246 L446 318 L504 326 Z"/>
-    <path class="w-spoke" d="M290 366 H350 L358 404 H282 Z"/>
-    <path class="w-rim-edge" d="M120 300 C104 168 190 70 320 70 C450 70 536 168 520 300 C512 362 480 402 430 404 L210 404 C160 402 128 362 120 300 Z"/>
-    <path class="w-rim" d="M120 300 C104 168 190 70 320 70 C450 70 536 168 520 300 C512 362 480 402 430 404 L210 404 C160 402 128 362 120 300 Z"/>
-    <path class="w-rim-grip" d="M120 300 C104 168 190 70 320 70 C450 70 536 168 520 300"/>
-    <path class="w-rim-hl" d="M101 250 C104 146 198 50 320 50 C442 50 536 146 539 250"/>
-    <rect class="w-mark" x="312" y="46" width="16" height="48" rx="3"/>
-    <rect class="w-plate" x="190" y="130" width="260" height="240" rx="38"/>
-    <rect class="w-plate-hl" x="190" y="130" width="260" height="240" rx="38"/>
-    <rect class="w-bar" x="210" y="143" width="220" height="26" rx="13"/>
-    <g id="wLeds"></g>
-    <rect class="w-display" x="290" y="226" width="60" height="58" rx="9"/>
-    <text class="w-gt" x="320" y="258" text-anchor="middle">GT</text>
-    <text class="w-sub" x="320" y="275" text-anchor="middle">KGT</text>
-    ${przyciski}`;
+    <g id="kBody">
+      <g filter="url(#cien)">
+        <rect class="k-plate" x="278" y="46" width="649" height="556" rx="44"/>
+        <use href="#uchwyt" class="k-grip"/>
+        <use href="#uchwyt" class="k-grip" transform="matrix(-1 0 0 1 1205 0)"/>
+      </g>
+      <rect class="k-plate-shine" x="278" y="46" width="649" height="556" rx="44"/>
+      <use href="#uchwyt" class="k-grip-shade"/>
+      <use href="#uchwyt" class="k-grip-shade" transform="matrix(-1 0 0 1 1205 0)"/>
+      <rect class="k-pod" x="288" y="326" width="84" height="256" rx="22"/>
+      <rect class="k-pod" x="833" y="326" width="84" height="256" rx="22"/>
+      <rect class="k-bar" x="356" y="80" width="493" height="68" rx="18"/>
+      ${sruba(381, 114, 10)}${sruba(824, 114, 10)}
+      <g id="wLeds"></g>
+      ${sruby}
+    </g>
+    <g id="kScreen">
+      <rect class="k-screen-frame" x="456" y="184" width="293" height="212" rx="14"/>
+      <rect class="k-screen" x="466" y="194" width="273" height="166" rx="4"/>
+      <text class="scr-l" x="474" y="214" style="font-size:13px;fill:#fff">KGT</text>
+      <rect x="505" y="203" width="226" height="14" fill="#262626"/>
+      <rect id="scrBar" x="505" y="203" width="0" height="14" fill="#f2c014"/>
+      <rect class="scr-box" x="472" y="224" width="66" height="30"/><text class="scr-l" x="476" y="233">PORT</text><text class="scr-v" id="scrPort" x="505" y="249">—</text>
+      <rect class="scr-box" x="472" y="258" width="66" height="30"/><text class="scr-l" x="476" y="267">FIRMWARE</text><text class="scr-v" id="scrFw" x="505" y="283">—</text>
+      <rect class="scr-box big" x="543" y="224" width="80" height="64"/><text class="scr-l" x="548" y="233">PRZYCISK</text><text class="scr-big" id="scrBig" x="583" y="266">–</text>
+      <rect class="scr-box" x="628" y="224" width="105" height="30"/><text class="scr-l" x="632" y="233">SPRAWDZONE</text><text class="scr-v" id="scrOk" x="680" y="249">0/12</text>
+      <rect class="scr-box" x="628" y="258" width="105" height="30"/><text class="scr-l" x="632" y="267">PIN</text><text class="scr-v" id="scrPin" x="680" y="283">—</text>
+      <rect class="scr-box" x="472" y="293" width="62" height="32"/><text class="scr-l" x="476" y="302">DIODY</text><text class="scr-v" id="scrLed" x="503" y="319">—</text>
+      <rect class="scr-box" x="537" y="293" width="62" height="32"/><text class="scr-l" x="541" y="302">PRZYCISKI</text><text class="scr-v" id="scrN" x="568" y="319">12</text>
+      <rect class="scr-box" x="602" y="293" width="62" height="32"/><text class="scr-l" x="606" y="302">CZAS</text><text class="scr-v" id="scrTime" x="633" y="319">—</text>
+      <rect class="scr-box" x="667" y="293" width="66" height="32"/><text class="scr-l" x="671" y="302">STAN</text><text class="scr-v" id="scrState" x="700" y="319">—</text>
+      <text class="scr-msg" id="scrMsg" x="602.5" y="346">SZUKAM KIEROWNICY…</text>
+      <rect x="466" y="194" width="273" height="166" rx="4" fill="url(#screenGlass)" pointer-events="none"/>
+      <text class="k-logo" x="602.5" y="383">KIEROWNICA <tspan>GT</tspan></text>
+    </g>
+    <g id="kSpots">${miejsca}</g>`;
   svg._ledN = -1;
+  renderKolo();
 }
 
 function malujKolo(hex) {
@@ -285,10 +356,10 @@ function malujKolo(hex) {
   const n = hex.length / 6;
   const svg = $('#wheel');
   if (svg._ledN !== n) {
-    const krok = 204 / n;
-    const r = Math.max(1.6, Math.min(7, krok * 0.38));
+    const krok = 412 / n;
+    const r = Math.max(2.2, Math.min(9, krok * 0.34));
     let html = '';
-    for (let i = 0; i < n; i++) html += `<circle class="w-led" cx="${(218 + krok * (i + 0.5)).toFixed(2)}" cy="156" r="${r.toFixed(2)}"/>`;
+    for (let i = 0; i < n; i++) html += `<circle class="w-led" cx="${(397 + krok * (i + 0.5)).toFixed(2)}" cy="114" r="${r.toFixed(2)}"/>`;
     g.innerHTML = html;
     g._leds = [...g.children];
     svg._ledN = n;
@@ -297,9 +368,63 @@ function malujKolo(hex) {
     const kol = hex.substr(i * 6, 6);
     if (c._c === kol) return;
     c._c = kol;
-    if (kol === '000000') { c.setAttribute('fill', '#1d232a'); c.classList.remove('on'); }
+    if (kol === '000000') { c.setAttribute('fill', '#1a1d21'); c.classList.remove('on'); }
     else { c.setAttribute('fill', '#' + kol); c.classList.add('on'); }
   });
+}
+
+function renderKolo() {
+  const svg = $('#wheel');
+  if (!svg.querySelector('#kSpots')) return;
+  svg.classList.toggle('przypisywanie', S.przyp.wl);
+  MIEJSCA.forEach((m) => {
+    const g = svg.querySelector(`.ws[data-id="${m.id}"]`);
+    const n = S.uklad[m.id];
+    const b = n ? S.btns[n - 1] : null;
+    const stan = b ? (b.wc && b.podejrz ? 'warn' : b.wc ? 'press' : '') : '';
+    g.classList.toggle('press', stan === 'press');
+    g.classList.toggle('warn', stan === 'warn');
+    g.classList.toggle('ok', !!(b && b.ok));
+    g.classList.toggle('pusty', !n);
+    g.classList.toggle('wybrane', S.przyp.wl && S.przyp.miejsce === m.id);
+    g.querySelector('.ws-num').textContent = n || '';
+    g.querySelector('title').textContent = n
+      ? `Przycisk ${n} – ${m.nazwa}${b ? ` · pin ${b.pin} · wciśnięć: ${b.licz}` : ''}`
+      : `${m.nazwa[0].toUpperCase() + m.nazwa.slice(1)} – bez przypisanego przycisku`;
+  });
+  renderEkran();
+}
+
+function ustawTekst(id, t) { const el = document.getElementById(id); if (el && el.textContent !== t) el.textContent = t; }
+
+function renderEkran() {
+  if (!document.getElementById('scrBar')) return;
+  const st = S.status;
+  const pol = st && st.stan === 'polaczono';
+  const info = pol ? st.info : null;
+  const n = S.btns.length;
+  const ok = S.btns.filter((b) => b.ok).length;
+  const bar = document.getElementById('scrBar');
+  bar.setAttribute('width', String(n ? (226 * ok) / n : 0));
+  bar.setAttribute('fill', n && ok === n ? '#22c55e' : '#f2c014');
+  ustawTekst('scrPort', pol ? String(st.port).replace(/^\/dev\//, '') : '—');
+  ustawTekst('scrFw', info ? info.wersja : '—');
+  ustawTekst('scrOk', `${ok}/${n}`);
+  ustawTekst('scrN', String(n));
+  ustawTekst('scrLed', info ? (info.max_diod ? String(S.u ? S.u.liczba_diod : '—') : 'BRAK') : '—');
+  const o = S.ostatni;
+  ustawTekst('scrBig', o ? String(o.n) : '–');
+  ustawTekst('scrPin', o && o.pin && o.pin !== '?' ? o.pin : '—');
+  ustawTekst('scrTime', o && o.czas != null ? `${o.czas.toFixed(2).replace('.', ',')}s` : '—');
+  ustawTekst('scrState', o ? (o.wl ? 'WCIŚN.' : 'PUSZCZ.') : '—');
+  let msg;
+  if (!pol) msg = (KROTKI_STATUS[st ? st.stan : 'szukam'] || 'Brak połączenia').toUpperCase();
+  else if (S.przyp.wl) msg = S.przyp.miejsce ? 'PRZYPISYWANIE: WCIŚNIJ PRZYCISK' : 'PRZYPISYWANIE: WYBIERZ MIEJSCE';
+  else if (n && ok === n) msg = 'WSZYSTKIE PRZYCISKI DZIAŁAJĄ ✓';
+  else msg = `WCIŚNIJ KOLEJNY PRZYCISK · ZOSTAŁO ${n - ok}`;
+  ustawTekst('scrMsg', msg);
+  const big = document.getElementById('scrBig');
+  big.classList.toggle('on', !!(o && o.wl));
 }
 
 function przygotujPrzyciski(n, zachowaj) {
@@ -310,7 +435,7 @@ function przygotujPrzyciski(n, zachowaj) {
     const b = takie ? stare[i] : null;
     return { n: i + 1, pin: S.piny[i + 1] || (b && b.pin) || '?', wc: false, licz: b ? b.licz : 0, ok: b ? b.ok : false, podejrz: false, od: 0 };
   });
-  budujKolo();
+  if (!$('#wheel #kSpots')) budujKolo();
   budujListe();
   renderPrzyciski();
 }
@@ -318,29 +443,27 @@ function przygotujPrzyciski(n, zachowaj) {
 function budujListe() {
   $('#btnList').innerHTML = S.btns.map((b) => `
     <div class="bl-row" data-n="${b.n}">
-      <span class="bl-num">${b.n}</span><span class="bl-pin"></span><span class="chip"></span><span class="bl-count"></span>
+      <span class="bl-num">${b.n}</span>
+      <span class="bl-info"><span class="bl-pin"></span><small class="bl-loc"></small></span>
+      <span class="chip"></span><span class="bl-count"></span>
     </div>`).join('');
   $('#ringTotal').textContent = S.nBtn;
 }
 
-function renderPrzycisk(b) {
+function renderWiersz(b) {
   const stan = b.wc && b.podejrz ? 'warn' : b.wc ? 'press' : b.ok ? 'ok' : '';
-  const g = $(`#wheel .wb[data-n="${b.n}"]`);
-  if (g) {
-    g.classList.toggle('press', stan === 'press');
-    g.classList.toggle('warn', stan === 'warn');
-    g.classList.toggle('ok', b.ok);
-    g.querySelector('title').textContent = `Przycisk ${b.n} · pin ${b.pin} · wciśnięć: ${b.licz}`;
-  }
   const row = $(`#btnList .bl-row[data-n="${b.n}"]`);
-  if (row) {
-    row.className = `bl-row ${stan}${b.ok ? ' ok' : ''}`;
-    row.querySelector('.bl-pin').textContent = b.pin;
-    const chip = row.querySelector('.chip');
-    chip.className = 'chip ' + (stan || '');
-    chip.textContent = stan === 'warn' ? 'od startu?' : stan === 'press' ? 'wciśnięty' : b.ok ? '✓ działa' : 'nie sprawdzony';
-    row.querySelector('.bl-count').textContent = b.licz ? `×${b.licz}` : '';
-  }
+  if (!row) return;
+  row.className = `bl-row ${stan}${b.ok ? ' ok' : ''}`;
+  row.querySelector('.bl-pin').textContent = b.pin;
+  const m = miejsceNumeru(b.n);
+  const loc = row.querySelector('.bl-loc');
+  loc.textContent = m ? m.nazwa : 'brak miejsca na rysunku';
+  loc.classList.toggle('brak', !m);
+  const chip = row.querySelector('.chip');
+  chip.className = 'chip ' + stan;
+  chip.textContent = stan === 'warn' ? 'od startu?' : stan === 'press' ? 'wciśnięty' : b.ok ? '✓ działa' : 'nie sprawdzony';
+  row.querySelector('.bl-count').textContent = b.licz ? `×${b.licz}` : '';
 }
 
 function renderPostep() {
@@ -352,7 +475,7 @@ function renderPostep() {
   $('#allOk').hidden = !(n && ok === n);
 }
 
-function renderPrzyciski() { S.btns.forEach(renderPrzycisk); renderPostep(); }
+function renderPrzyciski() { S.btns.forEach(renderWiersz); renderKolo(); renderPostep(); }
 
 function wpis(html) {
   const log = $('#log');
@@ -368,7 +491,7 @@ function zmianaPrzycisku(n, wl, pin, sync) {
   const b = S.btns[n - 1];
   if (!b) return;
   if (pin) b.pin = pin;
-  if (b.wc === wl) { renderPrzycisk(b); return; }
+  if (b.wc === wl) { renderWiersz(b); return; }
   b.wc = wl;
   const pinTxt = b.pin !== '?' ? `<span class="lpin">${esc(b.pin)}</span>` : '';
   if (wl) {
@@ -380,22 +503,68 @@ function zmianaPrzycisku(n, wl, pin, sync) {
       b.licz += 1;
       const nowy = !b.ok;
       b.ok = true;
+      S.ostatni = { n, pin: b.pin, wl: true, czas: null };
       wpis(`<span class="l-on"><span class="lnum">Przycisk ${n}</span></span> wciśnięty ${pinTxt}${nowy ? ' <span class="chip ok">nowy ✓</span>' : ''}`);
+      if (S.przyp.wl && S.przyp.miejsce) przypisz(S.przyp.miejsce, n);
+      else if (!miejsceNumeru(n) && !S.ostrzezone.has(n)) {
+        S.ostrzezone.add(n);
+        toast(`Przycisk ${n} nie ma miejsca na rysunku – kliknij „Przypisz przyciski”.`, 'info', 4500);
+      }
     }
   } else if (b.podejrz) {
     b.podejrz = false;
     wpis(`<span class="lnum">Przycisk ${n}</span> puszczony – wygląda dobrze. ${pinTxt}`);
   } else {
     const czas = (performance.now() - b.od) / 1000;
+    if (S.ostatni && S.ostatni.n === n) Object.assign(S.ostatni, { wl: false, czas });
     wpis(`<span class="lnum">Przycisk ${n}</span> puszczony ${pinTxt}<span class="ldur">${czas.toFixed(2).replace('.', ',')} s</span>`);
   }
-  renderPrzycisk(b);
+  renderWiersz(b);
+  renderKolo();
   renderPostep();
 }
 
 function stanPrzyciskow(bity) {
   [...bity].forEach((ch, i) => { if (ch === '0' || ch === '1') zmianaPrzycisku(i + 1, ch === '1', '', true); });
   S.pierwszyStan = false;
+}
+
+/* ------------------------------------------------- przypisywanie miejsc */
+function renderPrzypisywanie() {
+  const p = S.przyp;
+  $('#assignBar').hidden = !p.wl;
+  const btn = $('#btnAssign');
+  btn.setAttribute('aria-pressed', String(p.wl));
+  btn.classList.toggle('primary', p.wl);
+  const pol = S.status && S.status.stan === 'polaczono';
+  const m = p.miejsce ? MIEJSCA.find((x) => x.id === p.miejsce) : null;
+  const txt = $('#abText');
+  if (!pol) txt.innerHTML = 'Podłącz kierownicę – przypisywanie działa po wciśnięciu prawdziwego przycisku.';
+  else if (m) txt.innerHTML = `Wciśnij na kierownicy przycisk <b>${esc(m.nazwa)}</b>${S.uklad[m.id] ? ` (teraz: ${S.uklad[m.id]})` : ''}. Możesz też kliknąć inne miejsce na rysunku.`;
+  else txt.innerHTML = 'Kliknij miejsce na rysunku, a potem wciśnij ten przycisk na kierownicy.';
+  $('#abClear').disabled = !m || !S.uklad[m.id];
+  renderKolo();
+  S.btns.forEach(renderWiersz);
+}
+
+function zapiszUklad() { return api('/api/uklad', { miejsca: S.uklad }); }
+
+async function przypisz(id, n) {
+  Object.keys(S.uklad).forEach((k) => { if (S.uklad[k] === n) delete S.uklad[k]; });
+  S.uklad[id] = n;
+  S.ostrzezone.delete(n);
+  const m = MIEJSCA.find((x) => x.id === id);
+  toast(`Przycisk ${n} → ${m.nazwa}`, 'ok', 2200);
+  const i = MIEJSCA.findIndex((x) => x.id === id);
+  S.przyp.miejsce = i >= 0 && i < MIEJSCA.length - 1 ? MIEJSCA[i + 1].id : null;
+  renderPrzypisywanie();
+  await zapiszUklad();
+}
+
+function przelaczPrzypisywanie(wl) {
+  S.przyp.wl = wl;
+  S.przyp.miejsce = wl ? MIEJSCA[0].id : null;
+  renderPrzypisywanie();
 }
 
 /* ============================================================ DIODY LED */
@@ -508,6 +677,7 @@ function renderForm() {
   renderZasilanie();
   renderPresetyAktywne();
   renderZapis();
+  renderEkran();
 }
 
 function zmiana() {
@@ -820,6 +990,7 @@ function obsluz(m) {
     case 'witaj': {
       S.opts = m.opcje; S.plik = m.plik; S.sim = m.sim; S.piny = m.piny || {};
       if (!S.zbudowane) { budujStany(); budujStale(); S.zbudowane = true; }
+      S.uklad = m.uklad ? { ...m.uklad } : { ...UKLAD_DOMYSLNY };
       przyjmijUstawienia(m);
       renderSim();
       const st = m.status;
@@ -841,6 +1012,10 @@ function obsluz(m) {
       S.btns.forEach((b) => { if (m.piny[b.n]) { b.pin = m.piny[b.n]; renderPrzycisk(b); } });
       break;
     case 'klatka': naKlatke(m); break;
+    case 'uklad':
+      S.uklad = m.uklad ? { ...m.uklad } : { ...UKLAD_DOMYSLNY };
+      renderPrzypisywanie();
+      break;
     case 'sim': S.sim = m.sim; renderSim(); break;
     case 'niezapisane': S.niezapisane = m.niezapisane; renderZapis(); break;
     case 'ustawienia': przyjmijUstawienia(m); break;
@@ -883,6 +1058,28 @@ function podepnij() {
     renderPrzyciski();
     $('#log').innerHTML = '<li class="log-empty">Tu pojawi się każde wciśnięcie.</li>';
     toast('Test zaczęty od nowa.', 'info');
+  });
+  // przypisywanie przycisków do miejsc na rysunku
+  $('#btnAssign').addEventListener('click', () => przelaczPrzypisywanie(!S.przyp.wl));
+  $('#abDone').addEventListener('click', () => { przelaczPrzypisywanie(false); toast('Zapisano układ przycisków.'); });
+  $('#abClear').addEventListener('click', async () => {
+    const id = S.przyp.miejsce;
+    if (!id || !S.uklad[id]) return;
+    delete S.uklad[id];
+    renderPrzypisywanie();
+    await zapiszUklad();
+  });
+  $('#abReset').addEventListener('click', async () => {
+    if (await potwierdz('Przywrócić układ domyślny?', 'Przypisania przycisków do miejsc na rysunku wrócą do ustawień początkowych.', 'Przywróć')) {
+      if (await api('/api/uklad', { domyslny: true })) toast('Przywrócono domyślny układ przycisków.', 'info');
+    }
+  });
+  $('#wheel').addEventListener('click', (e) => {
+    const g = e.target.closest('.ws');
+    if (!g) return;
+    if (!S.przyp.wl) return;
+    S.przyp.miejsce = g.dataset.id;
+    renderPrzypisywanie();
   });
   $('#btnLogClear').addEventListener('click', () => { $('#log').innerHTML = '<li class="log-empty">Tu pojawi się każde wciśnięcie.</li>'; });
 
@@ -1126,7 +1323,10 @@ function podepnij() {
       if (S.niezapisane || S.timer) zapisz();
       else toast('Wszystko jest już zapisane.', 'info', 1800);
     }
-    if (e.key === 'Escape') zamknijPopover();
+    if (e.key === 'Escape') {
+      zamknijPopover();
+      if (S.przyp.wl && !document.querySelector('dialog[open]')) przelaczPrzypisywanie(false);
+    }
   });
 
   window.addEventListener('beforeunload', (e) => {

@@ -80,20 +80,33 @@
             <h2>Test przycisków</h2>
             <p class="muted">Wciśnij po kolei każdy przycisk na kierownicy. Sprawdzony przycisk dostaje zielony znaczek.</p>
           </div>
-          <div class="ring" id="ring" aria-live="polite">
-            <svg viewBox="0 0 64 64"><circle class="ring-bg" cx="32" cy="32" r="27"/><circle class="ring-fg" id="ringFg" cx="32" cy="32" r="27"/></svg>
-            <div class="ring-text"><b id="ringCount">0</b><span>z <i id="ringTotal">12</i></span></div>
+          <div class="head-right">
+            <button class="btn sm" id="btnAssign" aria-pressed="false" title="Ustal, który przycisk na rysunku to który przycisk w kierownicy"><svg><use href="#i-buttons"/></svg>Przypisz przyciski</button>
+            <div class="ring" id="ring" aria-live="polite">
+              <svg viewBox="0 0 64 64"><circle class="ring-bg" cx="32" cy="32" r="27"/><circle class="ring-fg" id="ringFg" cx="32" cy="32" r="27"/></svg>
+              <div class="ring-text"><b id="ringCount">0</b><span>z <i id="ringTotal">12</i></span></div>
+            </div>
           </div>
         </div>
 
-        <div class="wheel-wrap">
-          <svg id="wheel" viewBox="82 34 476 404" role="img" aria-label="Kierownica z przyciskami"></svg>
-          <div class="wheel-overlay" id="wheelOverlay">
-            <div class="ov-icon" id="ovIcon"><div class="spinner"></div></div>
-            <h3 id="ovTitle">Szukam kierownicy…</h3>
-            <p id="ovText">Podłącz kierownicę kablem USB.</p>
-            <button class="btn primary" id="ovConnect" hidden><svg><use href="#i-plug"/></svg>Połącz</button>
+        <div class="assign-bar" id="assignBar" hidden>
+          <div class="ab-icon"><svg><use href="#i-buttons"/></svg></div>
+          <div class="ab-text"><b id="abTitle">Przypisywanie przycisków</b><span id="abText"></span></div>
+          <div class="ab-actions">
+            <button class="btn ghost sm" id="abClear">Wyczyść to miejsce</button>
+            <button class="btn ghost sm" id="abReset">Układ domyślny</button>
+            <button class="btn primary sm" id="abDone"><svg><use href="#i-check"/></svg>Gotowe</button>
           </div>
+        </div>
+
+        <div class="wheel-wrap" id="wheelWrap">
+          <svg id="wheel" viewBox="20 24 1165 676" role="img" aria-label="Kierownica z przyciskami"></svg>
+        </div>
+
+        <div class="wheel-status" id="wheelOverlay">
+          <div class="ov-icon" id="ovIcon"><div class="spinner"></div></div>
+          <div class="ov-text"><b id="ovTitle">Szukam kierownicy…</b><span id="ovText">Podłącz kierownicę kablem USB.</span></div>
+          <button class="btn primary sm" id="ovConnect" hidden><svg><use href="#i-plug"/></svg>Połącz</button>
         </div>
 
         <div class="all-ok" id="allOk" hidden><svg><use href="#i-check"/></svg>Wszystkie przyciski działają!</div>
