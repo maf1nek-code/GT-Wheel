@@ -13,8 +13,15 @@ przez USB (port szeregowy), a program w Pythonie zamienia je na wirtualny kontro
 |---|---|
 | `esp32/kierownica_gt/kierownica_gt.ino` | firmware do wgrania z Arduino IDE |
 | `pc/kierownica.py` | program na PC: autowykrywanie portu + emulacja kontrolera |
+| `pc/konfigurator.py` | konfigurator: obsługa kierownicy i efektów LED w tle, otwiera okno z `pc/ui` |
+| `pc/ui/` | wygląd konfiguratora (HTML/CSS/JS) |
+| `pc/led_efekty.py` | liczenie efektów LED (obroty, zmiana biegu, pit limiter, flagi) |
+| `pc/telemetria.py` | odczyt telemetrii z AC, ACC i Le Mans Ultimate (z spotterem) |
+| `pc/firmware.py` | aktualizacja firmware: wydania z GitHuba + esptool |
+| `.github/workflows/firmware.yml` | budowanie firmware i publikowanie wydań |
 | `pc/requirements.txt` | biblioteki Pythona |
 | `Kierownica_GT.bat` | uruchamianie dwuklikiem (sam instaluje biblioteki za 1. razem) |
+| `Konfigurator_GT.bat` | uruchamianie konfiguratora dwuklikiem |
 
 ## Przyciski i piny (ESP32-WROOM-32 / ESP32 DevKit)
 
@@ -46,11 +53,28 @@ Pominięte są piny, które sprawiają problemy:
 - GPIO 6–11: pamięć flash.
 - GPIO 34–39: tylko wejścia, bez pull-upa.
 
-Zapasowe dobre piny: GPIO 13, 16 i 17.
+Zapasowe dobre piny: GPIO 16 i 17 (GPIO 13 jest zajęty przez pasek LED).
+
+## Pasek LED (opcjonalny)
+
+Pasek WS2812B (np. 8–24 diody) pokazuje obroty silnika i stany specjalne. Kolory liczy program
+na PC, a ESP32 tylko je wyświetla, więc zmiana kolorów nie wymaga ponownego wgrywania firmware.
+
+| Pasek | ESP32 |
+|---|---|
+| DIN | **GPIO13** przez rezystor ok. 330 Ω |
+| 5V | pin **VIN/5V** płytki |
+| GND | **GND** |
+
+- Przy zasilaniu z USB trzymaj jasność ≤ 40%. Każda dioda świecąca na biało na 100% pobiera
+  ok. 60 mA. Przy dłuższym pasku użyj osobnego zasilacza 5 V (GND wspólne z ESP32).
+- Firmware obsługuje do 60 diod. Bez danych z PC przez 3 s pasek gaśnie.
+- Bez paska możesz zostawić firmware bez zmian albo ustawić `LED_ENABLED` na `0`.
 
 ## 1. Wgranie firmware (Arduino IDE)
 
 1. *Boards Manager* → zainstaluj pakiet **esp32** by Espressif Systems.
+   *Tools → Manage Libraries* → zainstaluj **Adafruit NeoPixel** (do paska LED).
 2. *Tools → Board* → **ESP32 Dev Module**. W Windows może być potrzebny sterownik **CP210x**
    albo **CH340**, zależnie od układu USB na płytce.
 3. Otwórz `esp32/kierownica_gt/kierownica_gt.ino` i kliknij **Upload**. Jeśli wgrywanie stoi na
@@ -65,7 +89,13 @@ Protokół (tekst, 115200 baud):
 |---|---|
 | `BTN <nr> ON <pin>` / `BTN <nr> OFF <pin>` | zmiana stanu przycisku |
 | `STATE 000000000100` | pełny stan, wysyłany co 1 s (1 = wciśnięty) |
-| `PONG KIEROWNICA_GT 1.0 12` | odpowiedź na `PING` (po niej PC rozpoznaje kierownicę) |
+| `PONG KIEROWNICA_GT 1.1 12 LED 60` | odpowiedź na `PING` (po niej PC rozpoznaje kierownicę; `LED 60` = obsługa paska do 60 diod) |
+
+| Od PC | Znaczenie |
+|---|---|
+| `PING` / `STATE?` / `INFO` | powitanie / pełny stan przycisków / lista pinów |
+| `LEDS RRGGBBRRGGBB…` | kolory paska (6 znaków hex na diodę, jasność już uwzględniona) |
+| `LEDS` | zgaś pasek |
 
 ## 2. Sterownik wirtualnego kontrolera (Windows)
 
@@ -80,7 +110,98 @@ Wybierz jeden:
 
 Domyślny tryb `auto` używa vJoy, a gdy go nie ma, pada Xbox.
 
-## 3. Uruchomienie
+## 3. Konfigurator (test przycisków i diody LED)
+
+Kliknij dwukrotnie **`Konfigurator_GT.bat`**. Otworzy się osobne okno konfiguratora (w Microsoft
+Edge w trybie aplikacji, bez pasków przeglądarki – Edge jest w każdym Windows 10/11).
+Okno samo znajdzie kierownicę. Zamknięcie okna kończy program.
+
+Port COM może mieć otwarty tylko jeden program, więc najpierw zamknij `Kierownica_GT.bat`
+i Serial Monitor. Status połączenia i wybór portu są w prawym górnym rogu.
+
+**Test przycisków**: rysunek tej kierownicy (karbonowa płyta, pasek 16 diod, ekran, 10 kolorowych
+przycisków i 3 pokrętła). Wciśnięty przycisk świeci, sprawdzony dostaje ✓, a ekran na rysunku pokazuje
+ostatnio wciśnięty przycisk, jego pin, czas trzymania i postęp testu. Pasek diod na rysunku świeci tak
+samo jak prawdziwy. Przycisk wciśnięty już w chwili połączenia pulsuje na pomarańczowo – może to
+oznaczać zwarcie pinu do GND. Obok jest lista pinów i dziennik.
+
+**Przypisz przyciski**: ustala, który numer przycisku z firmware jest w którym miejscu rysunku.
+Klikasz miejsce na rysunku i wciskasz ten przycisk na kierownicy (program sam przechodzi do następnego
+miejsca). Układ zapisuje się w `pc/uklad_kierownicy.json`. Domyślny układ jest zgadnięty z tabeli pinów:
+lewa strona 1–5 i lewe pokrętło 11, prawa strona 6–10 i prawe pokrętło 12.
+
+**Diody LED**:
+
+- podgląd na żywo i symulacja: jazda (obroty ręcznie albo automatycznie), pit limiter, flagi,
+  gra wyłączona; przełącznik **Na kierownicy** pokazuje to samo na prawdziwym pasku,
+- liczba diod, jasność (z wyliczeniem poboru prądu), kierunek zapalania,
+- kolory: zaznaczasz diody myszką (przeciągnięcie, Shift = zakres, Ctrl = pojedyncze) i wybierasz
+  kolor; są gotowe zestawy, własny gradient i odbicie lustrzane,
+- progi obrotów na jednym suwaku z trzema znacznikami (pierwsza dioda, wszystkie, zmiana biegu),
+- stany specjalne z podglądem każdego z nich: zmiana biegu, pit limiter (3 wzory), flaga żółta
+  i niebieska (na skrajnych diodach albo całym pasku), gra wyłączona (zgaszone, stały, oddech, skaner),
+- **Zapisz** (Ctrl+S) zapisuje do `pc/leds.json` – z tego pliku będzie korzystał program w czasie gry,
+- **Profile**: osobne zestawy ustawień, np. dla każdej gry (`pc/profile_led/`), plus eksport
+  i import do pliku.
+
+`pc/leds.json` i profile nie są w gicie, więc aktualizacje ich nie nadpiszą.
+
+W podglądzie jest też tryb **Gra na żywo**: gdy gra działa, panel pod paskiem pokazuje, co program
+z niej odczytuje (obroty, bieg, pit limiter, flaga), a pasek świeci jak w czasie jazdy. Tak najłatwiej
+ustawić progi pod konkretne auto.
+
+## 4. Diody w czasie gry (telemetria)
+
+Obsługiwane gry: **Assetto Corsa**, **Assetto Corsa Competizione** i **Le Mans Ultimate**.
+Uruchom grę i **`Kierownica_GT.bat`** (jak zawsze). Program sam wykryje grę i będzie sterował paskiem
+według ustawień z konfiguratora (`pc/leds.json`):
+
+- obroty → kolejne diody, od progu „zmiana biegu” cały pasek miga,
+- pit limiter, flaga żółta i niebieska → efekty ze „Stanów specjalnych”,
+- **spotter** (ACC i Le Mans Ultimate): auto obok ciebie zapala skrajne diody po jego stronie.
+  Assetto Corsa nie podaje pozycji innych aut, więc tam spotter nie działa. Jeśli w którejś grze
+  strony wyjdą odwrotnie, w karcie „Spotter” włącz „Zamień lewą i prawą stronę”,
+- menu, pauza, powtórka albo brak gry → efekt „Gra wyłączona”.
+
+Zmiany zapisane w konfiguratorze są wczytywane w trakcie jazdy, bez restartu. Konfigurator i
+`Kierownica_GT.bat` nie mogą działać jednocześnie (jeden port COM), więc ustaw diody, zamknij
+konfigurator, potem uruchom grę z `Kierownica_GT.bat`. Opcja `--bez-diod` wyłącza sterowanie paskiem.
+
+| Gra | Skąd dane | Co trzeba zrobić |
+|---|---|---|
+| Assetto Corsa | wbudowana pamięć współdzielona | nic |
+| Assetto Corsa Competizione | wbudowana pamięć współdzielona | nic |
+| Le Mans Ultimate | wtyczka rF2SharedMemoryMapPlugin | włączyć wtyczkę (poniżej) |
+
+**Le Mans Ultimate – włączenie wtyczki** (tylko jeśli konfigurator pisze, że gra „nie udostępnia
+danych”; jeśli używasz SimHub albo CrewChief, zwykle jest już włączona):
+
+1. Pobierz `rFactor2SharedMemoryMapPlugin64.dll` (projekt *rF2SharedMemoryMapPlugin* autora
+   TheIronWolfModding na GitHubie) i skopiuj go do folderu gry `Le Mans Ultimate\Plugins\`.
+2. Uruchom grę raz i zamknij. W pliku `Le Mans Ultimate\UserData\player\CustomPluginVariables.JSON`
+   przy `rFactor2SharedMemoryMapPlugin64.dll` ustaw `" Enabled": 1`.
+3. Uruchom grę ponownie.
+
+Sprawdzenie bez kierownicy (w folderze projektu, po pierwszym uruchomieniu `.bat`):
+`pc\.venv\Scripts\python.exe pc\telemetria.py` wypisuje na żywo odczyty z gry.
+
+## 5. Aktualizacja firmware z konfiguratora
+
+Po pierwszym wgraniu przez Arduino IDE kolejne wersje wgrywa konfigurator: kliknij status połączenia
+(prawy górny róg) → **Aktualizacja firmware**. Gdy jest nowsza wersja, na stronie głównej pojawia się
+też pasek „Dostępna nowa wersja firmware”. Aktualizacja trwa ok. 30 s, idzie tym samym kablem USB,
+a ustawienia diod i układ przycisków zostają na komputerze.
+
+- Pliki firmware buduje **GitHub Actions** (`.github/workflows/firmware.yml`) przy każdej zmianie
+  w `esp32/`. Na gałęzi głównej powstaje wydanie `fw-<wersja>`, które konfigurator pobiera.
+  Żeby wydać nową wersję, podnieś `FW_VERSION` w `kierownica_gt.ino`.
+- **Wgraj z pliku .bin…** – plik z Arduino IDE (*Szkic → Eksportuj skompilowany plik binarny*,
+  najlepiej `kierownica_gt.ino.merged.bin`) albo pobrany z zakładki Releases na GitHubie.
+- Wgrywa narzędzie **esptool** (to samo co w Arduino IDE), instalowane automatycznie przez `.bat`.
+- Gdy wgrywanie nie może się połączyć: przytrzymaj **BOOT** na płytce, kliknij „Aktualizuj” i puść
+  BOOT, gdy pojawi się „Łączenie”.
+
+## 6. Uruchomienie
 
 Kliknij dwukrotnie **`Kierownica_GT.bat`**. Wymagany jest Python 3 z <https://python.org>, z
 zaznaczoną opcją *Add python.exe to PATH*.

@@ -37,9 +37,11 @@ if errorlevel 1 (
 )
 
 :check_deps
-if exist ".venv\zainstalowane.txt" goto run
+REM Biblioteki instaluja sie ponownie, gdy zmieni sie requirements.txt (np. po aktualizacji)
+fc /b requirements.txt ".venv\zainstalowane.txt" >nul 2>&1
+if not errorlevel 1 goto run
 
-echo Instaluje biblioteki (pyserial, vgamepad, pyvjoy)...
+echo Instaluje biblioteki (pyserial, vgamepad, pyvjoy, esptool)...
 echo Jesli pojawi sie instalator sterownika ViGEmBus - zaakceptuj go.
 "%VENV_PY%" -m pip install --upgrade pip >nul
 "%VENV_PY%" -m pip install -r requirements.txt
@@ -48,7 +50,7 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-echo ok> ".venv\zainstalowane.txt"
+copy /y requirements.txt ".venv\zainstalowane.txt" >nul
 
 :run
 "%VENV_PY%" kierownica.py %*
