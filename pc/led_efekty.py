@@ -175,19 +175,26 @@ def kolory_presetu(nazwa: str, n: int, kierunek: str) -> list[Kolor]:
 def _scal(domyslne: dict, wlasne: dict) -> dict:
     wynik = copy.deepcopy(domyslne)
     for klucz, wartosc in wlasne.items():
-        if isinstance(wartosc, dict) and isinstance(wynik.get(klucz), dict):
-            wynik[klucz] = _scal(wynik[klucz], wartosc)
+        if isinstance(wynik.get(klucz), dict):
+            if isinstance(wartosc, dict):          # zly typ (np. tekst zamiast sekcji) - pomin
+                wynik[klucz] = _scal(wynik[klucz], wartosc)
         else:
             wynik[klucz] = wartosc
     return wynik
 
 
+def _wybor(wartosc, dozwolone: dict, domyslnie: str) -> str:
+    return wartosc if isinstance(wartosc, str) and wartosc in dozwolone else domyslnie
+
+
 def _ogranicz(x, lo, hi, domyslnie):
+    if isinstance(x, bool):
+        return domyslnie
     try:
         x = float(x)
     except (TypeError, ValueError):
         return domyslnie
-    if math.isnan(x):
+    if math.isnan(x) or math.isinf(x):
         return domyslnie
     return min(hi, max(lo, x))
 
@@ -206,8 +213,7 @@ def popraw_ustawienia(u: dict) -> dict:
 
     u["liczba_diod"] = int(_ogranicz(u["liczba_diod"], 1, MAX_DIOD, d["liczba_diod"]))
     u["jasnosc"] = int(_ogranicz(u["jasnosc"], 0, 100, d["jasnosc"]))
-    if u["kierunek"] not in KIERUNKI:
-        u["kierunek"] = d["kierunek"]
+    u["kierunek"] = _wybor(u["kierunek"], KIERUNKI, d["kierunek"])
 
     n = u["liczba_diod"]
     kolory = u["kolory"] if isinstance(u["kolory"], list) else []
@@ -232,12 +238,12 @@ def popraw_ustawienia(u: dict) -> dict:
         st["miganie_hz"] = _ogranicz(st["miganie_hz"], 0, 20, ds["miganie_hz"])
     s["zmiana_biegu"]["prog"] = _ogranicz(s["zmiana_biegu"]["prog"], 0, 100,
                                           d["stany"]["zmiana_biegu"]["prog"])
-    if s["pit_limiter"]["wzor"] not in WZORY_PIT:
-        s["pit_limiter"]["wzor"] = d["stany"]["pit_limiter"]["wzor"]
+    s["pit_limiter"]["wzor"] = _wybor(s["pit_limiter"]["wzor"], WZORY_PIT,
+                                      d["stany"]["pit_limiter"]["wzor"])
     s["flagi_diody_skrajne"] = int(_ogranicz(s["flagi_diody_skrajne"], 0, MAX_DIOD // 2,
                                              d["stany"]["flagi_diody_skrajne"]))
-    if s["brak_gry"]["tryb"] not in TRYBY_BEZCZYNNOSCI:
-        s["brak_gry"]["tryb"] = d["stany"]["brak_gry"]["tryb"]
+    s["brak_gry"]["tryb"] = _wybor(s["brak_gry"]["tryb"], TRYBY_BEZCZYNNOSCI,
+                                   d["stany"]["brak_gry"]["tryb"])
     s["brak_gry"]["kolor"] = _kolor_lub(s["brak_gry"]["kolor"], d["stany"]["brak_gry"]["kolor"])
     return u
 
