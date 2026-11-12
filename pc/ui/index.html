@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Kierownica GT</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-wheel" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4.2 14.5C3.6 8.6 7.2 4 12 4s8.4 4.6 7.8 10.5c-.3 2.6-1.8 4.5-3.8 4.5H8c-2 0-3.5-1.9-3.8-4.5Z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4.6 12.5 9 11.6M19.4 12.5 15 11.6M12 15.5V19"/><rect x="9" y="9.6" width="6" height="5.6" rx="1.6" fill="currentColor"/></symbol>
+  <symbol id="i-buttons" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2"><circle cx="7" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="7" cy="17" r="3"/></g><circle cx="17" cy="17" r="3.6" fill="currentColor"/></symbol>
+  <symbol id="i-leds" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="4" cy="12" r="2.4"/><circle cx="10" cy="12" r="2.4"/><circle cx="16" cy="12" r="2.4" opacity=".55"/><circle cx="21.5" cy="12" r="1.6" opacity=".3"/></g></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4.2" height="14" rx="1.2" fill="currentColor"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.2" fill="currentColor"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M5 4h11l3 3v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4Z"/><path fill="none" stroke="currentColor" stroke-width="2" d="M8 4v5h7V4M8 20v-6h8v6"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 14 4 9l5-5"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4.5h-4.5"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M9 3v5M15 3v5M6.5 8h11v3a5.5 5.5 0 0 1-11 0V8ZM12 16.5V21"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 3.5 2.8 19.5h18.4L12 3.5Z"/><path stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M12 10v4.5M12 17.4v.1"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5M5 20h14"/></symbol>
+  <symbol id="i-mirror" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 3v18M8 7 3 12l5 5M16 7l5 5-5 5"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M13 3 4.5 13.5H11L10 21l8.5-10.5H12L13 3Z"/></symbol>
+  <symbol id="i-pit" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><text x="12" y="15.6" text-anchor="middle" font-size="8.5" font-weight="800" fill="currentColor" font-family="Segoe UI, sans-serif">PIT</text></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M5 21V4"/><path fill="currentColor" d="M6 4.5h12.5l-2.8 4.3 2.8 4.2H6Z"/></symbol>
+  <symbol id="i-spotter" viewBox="0 0 24 24"><rect x="8.5" y="3.5" width="7" height="17" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4.5 9 2 12l2.5 3M19.5 9 22 12l-2.5 3"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M20 14.6A8.5 8.5 0 0 1 9.4 4a8.5 8.5 0 1 0 10.6 10.6Z"/></symbol>
+</svg>
+
+<header class="top">
+  <div class="brand">
+    <div class="brand-logo"><svg><use href="#i-wheel"/></svg></div>
+    <div class="brand-text"><b>KIEROWNICA <em>GT</em></b><span>Konfigurator</span></div>
+  </div>
+
+  <nav class="tabs" role="tablist" aria-label="Sekcje">
+    <button class="tab-btn" role="tab" id="tabbtn-przyciski" data-tab="przyciski" aria-selected="true" aria-controls="tab-przyciski">
+      <svg><use href="#i-buttons"/></svg>Test przycisków
+    </button>
+    <button class="tab-btn" role="tab" id="tabbtn-ledy" data-tab="ledy" aria-selected="false" aria-controls="tab-ledy">
+      <svg><use href="#i-leds"/></svg>Diody LED<span class="tab-dot" id="tabDot" hidden title="Niezapisane zmiany"></span>
+    </button>
+  </nav>
+
+  <div class="conn">
+    <button class="conn-pill" id="connPill" aria-haspopup="dialog" aria-expanded="false">
+      <span class="conn-dot"></span><span class="conn-text" id="connText">Uruchamianie…</span><svg class="chev"><use href="#i-chevron"/></svg>
+    </button>
+    <div class="popover" id="connPop" hidden role="dialog" aria-label="Połączenie z kierownicą">
+      <div class="pop-status" id="popStatus"></div>
+      <dl class="pop-info" id="popInfo"></dl>
+      <label class="field">
+        <span>Port</span>
+        <div class="select-wrap"><select id="portSelect"></select><svg><use href="#i-chevron"/></svg></div>
+      </label>
+      <div class="pop-actions">
+        <button class="btn" id="btnDisconnect">Rozłącz</button>
+        <button class="btn primary" id="btnConnect"><svg><use href="#i-plug"/></svg>Połącz</button>
+      </div>
+      <button class="btn ghost sm pop-fw" id="btnFw"><svg><use href="#i-upload"/></svg>Aktualizacja firmware<span class="fw-badge" id="fwBadge" hidden>nowa wersja</span></button>
+      <p class="pop-hint">Port COM może mieć otwarty tylko jeden program. Na czas konfiguracji zamknij <b>Kierownica_GT.bat</b> i Serial Monitor.</p>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- ======================= TEST PRZYCISKÓW ======================= -->
+  <section class="tab" id="tab-przyciski" role="tabpanel" aria-labelledby="tabbtn-przyciski">
+    <div class="fw-banner" id="fwBanner" hidden>
+      <div class="fwb-icon"><svg><use href="#i-upload"/></svg></div>
+      <div class="fwb-text"><b>Dostępna nowa wersja firmware: <span id="fwbNew"></span></b><span>W kierownicy jest wersja <span id="fwbOld"></span>. Aktualizacja trwa ok. 30 sekund.</span></div>
+      <button class="btn primary sm" id="fwbOpen">Aktualizuj</button>
+    </div>
+    <div class="buttons-layout">
+      <div class="card wheel-card">
+        <div class="card-head">
+          <div>
+            <h2>Test przycisków</h2>
+            <p class="muted">Wciśnij po kolei każdy przycisk na kierownicy. Sprawdzony przycisk dostaje zielony znaczek.</p>
+          </div>
+          <div class="head-right">
+            <button class="btn sm" id="btnAssign" aria-pressed="false" title="Ustal, który przycisk na rysunku to który przycisk w kierownicy"><svg><use href="#i-buttons"/></svg>Przypisz przyciski</button>
+            <div class="ring" id="ring" aria-live="polite">
+              <svg viewBox="0 0 64 64"><circle class="ring-bg" cx="32" cy="32" r="27"/><circle class="ring-fg" id="ringFg" cx="32" cy="32" r="27"/></svg>
+              <div class="ring-text"><b id="ringCount">0</b><span>z <i id="ringTotal">12</i></span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="assign-bar" id="assignBar" hidden>
+          <div class="ab-icon"><svg><use href="#i-buttons"/></svg></div>
+          <div class="ab-text"><b id="abTitle">Przypisywanie przycisków</b><span id="abText"></span></div>
+          <div class="ab-actions">
+            <button class="btn ghost sm" id="abClear">Wyczyść to miejsce</button>
+            <button class="btn ghost sm" id="abReset">Układ domyślny</button>
+            <button class="btn primary sm" id="abDone"><svg><use href="#i-check"/></svg>Gotowe</button>
+          </div>
+        </div>
+
+        <div class="wheel-wrap" id="wheelWrap">
+          <svg id="wheel" viewBox="20 24 1165 676" role="img" aria-label="Kierownica z przyciskami"></svg>
+        </div>
+
+        <div class="wheel-status" id="wheelOverlay">
+          <div class="ov-icon" id="ovIcon"><div class="spinner"></div></div>
+          <div class="ov-text"><b id="ovTitle">Szukam kierownicy…</b><span id="ovText">Podłącz kierownicę kablem USB.</span></div>
+          <button class="btn primary sm" id="ovConnect" hidden><svg><use href="#i-plug"/></svg>Połącz</button>
+        </div>
+
+        <div class="all-ok" id="allOk" hidden><svg><use href="#i-check"/></svg>Wszystkie przyciski działają!</div>
+
+        <div class="legend">
+          <span><i class="lg lg-idle"></i>nie sprawdzony</span>
+          <span><i class="lg lg-press"></i>wciśnięty</span>
+          <span><i class="lg lg-ok"></i>działa</span>
+          <span><i class="lg lg-warn"></i>wciśnięty od startu – sprawdź, czy pin nie zwiera do GND</span>
+        </div>
+      </div>
+
+      <div class="side">
+        <div class="card list-card">
+          <div class="card-head small">
+            <h3>Przyciski</h3>
+            <button class="btn ghost sm" id="btnTestReset"><svg><use href="#i-reset"/></svg>Zacznij od nowa</button>
+          </div>
+          <div class="btn-list" id="btnList"></div>
+        </div>
+        <div class="card log-card">
+          <div class="card-head small">
+            <h3>Dziennik</h3>
+            <button class="btn ghost sm" id="btnLogClear">Wyczyść</button>
+          </div>
+          <ol class="log" id="log"><li class="log-empty">Tu pojawi się każde wciśnięcie.</li></ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================== DIODY LED ========================== -->
+  <section class="tab" id="tab-ledy" role="tabpanel" aria-labelledby="tabbtn-ledy" hidden>
+    <div class="card hero">
+      <div class="hero-head">
+        <div>
+          <h2>Podgląd na żywo</h2>
+          <p class="muted">Symulacja – sprawdź efekty bez uruchamiania gry.</p>
+        </div>
+        <label class="device-toggle" title="Pokazuj podgląd na pasku LED w kierownicy">
+          <span class="switch"><input type="checkbox" id="simSend"><span class="slider"></span></span>
+          <span class="dt-text"><b>Na kierownicy</b><small id="deviceState">kierownica niepołączona</small></span>
+        </label>
+      </div>
+
+      <div class="bezel"><div class="strip hero-strip" id="heroStrip"></div></div>
+
+      <div class="hero-controls">
+        <div class="seg sim-seg" id="simState" role="radiogroup" aria-label="Stan symulacji">
+          <button data-v="gra" role="radio" class="seg-live"><span class="live-dot"></span>Gra na żywo</button>
+          <button data-v="jazda" role="radio"><svg><use href="#i-gear"/></svg>Jazda</button>
+          <button data-v="pit" role="radio"><svg><use href="#i-pit"/></svg>Pit limiter</button>
+          <button data-v="zolta" role="radio"><svg class="c-yellow"><use href="#i-flag"/></svg>Flaga żółta</button>
+          <button data-v="niebieska" role="radio"><svg class="c-blue"><use href="#i-flag"/></svg>Flaga niebieska</button>
+          <button data-v="brak_gry" role="radio"><svg><use href="#i-moon"/></svg>Gra wyłączona</button>
+        </div>
+        <div class="rpm-ctl">
+          <button class="icon-btn" id="simAuto" title="Automatyczna jazda (obroty rosną same)" aria-pressed="true"><svg><use href="#i-pause"/></svg></button>
+          <div class="rpm-track">
+            <div class="rpm-marks" id="rpmMarks"></div>
+            <input type="range" id="simRpm" min="0" max="100" step="0.5" value="80" aria-label="Obroty silnika">
+          </div>
+          <div class="rpm-val"><b id="rpmVal">80</b><span>% obrotów</span></div>
+        </div>
+      </div>
+
+      <div class="game-info" id="gameInfo" data-stan="brak">
+        <div class="gi-head">
+          <span class="gi-dot"></span>
+          <div class="gi-text"><b id="giTitle">Telemetria z gry</b><span id="giText">Uruchamianie…</span></div>
+          <button class="btn sm" id="giUse" hidden><span class="live-dot"></span>Pokaż grę na żywo</button>
+        </div>
+        <div class="gi-stats">
+          <div><small>Obroty</small><b id="giRpm">—</b></div>
+          <div><small>Bieg</small><b id="giGear">—</b></div>
+          <div><small>Pit limiter</small><b id="giPit">—</b></div>
+          <div><small>Flaga</small><b id="giFlag">—</b></div>
+          <div><small>Spotter</small><b id="giSpot">—</b></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="led-grid">
+      <div class="col">
+        <div class="card">
+          <div class="card-head small"><h3>Pasek LED</h3></div>
+          <div class="form">
+            <div class="row">
+              <div class="label">Liczba diod</div>
+              <div class="stepper">
+                <button class="step" data-step="-1" aria-label="Mniej diod">−</button>
+                <input type="number" id="ledCount" data-bind="liczba_diod" data-type="int" min="1" max="60" inputmode="numeric">
+                <button class="step" data-step="1" aria-label="Więcej diod">+</button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="label">Jasność</div>
+              <div class="range-row">
+                <input type="range" data-bind="jasnosc" data-type="int" min="0" max="100" step="1" aria-label="Jasność">
+                <output id="outJasnosc">40%</output>
+              </div>
+            </div>
+            <div class="note" id="powerNote"></div>
+            <div class="row col-row">
+              <div class="label">Kierunek zapalania</div>
+              <div class="dir-grid seg" data-bind="kierunek" id="dirSeg">
+                <button data-v="lewo_prawo"><span class="dir-ico" data-dir="lewo_prawo"></span><span>Od lewej</span></button>
+                <button data-v="prawo_lewo"><span class="dir-ico" data-dir="prawo_lewo"></span><span>Od prawej</span></button>
+                <button data-v="od_srodka"><span class="dir-ico" data-dir="od_srodka"></span><span>Od środka</span></button>
+                <button data-v="do_srodka"><span class="dir-ico" data-dir="do_srodka"></span><span>Do środka</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head small">
+            <h3>Kiedy zapalają się diody</h3>
+          </div>
+          <p class="muted small-text">Przeciągnij znaczniki. Od <b class="t-start">pierwszej</b> do <b class="t-full">ostatniej</b> diody pasek zapala się stopniowo, a od progu <b class="t-shift">zmiany biegu</b> cały miga.</p>
+          <div class="thr" id="thr">
+            <div class="thr-track" id="thrTrack">
+              <div class="thr-zone" id="thrZone"></div>
+              <div class="thr-shiftzone" id="thrShiftZone"></div>
+              <div class="thr-rpm" id="thrRpm"></div>
+            </div>
+            <button class="thr-h h-start" data-k="start" role="slider" aria-label="Pierwsza dioda"><span class="tip"></span></button>
+            <button class="thr-h h-full" data-k="pelne" role="slider" aria-label="Wszystkie diody"><span class="tip"></span></button>
+            <button class="thr-h h-shift" data-k="prog" role="slider" aria-label="Zmiana biegu"><span class="tip"></span></button>
+            <div class="thr-scale"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+          </div>
+          <div class="thr-inputs">
+            <label><i class="dot d-start"></i>Pierwsza dioda<span class="num-wrap"><input type="number" data-bind="obroty.start" data-type="float" min="0" max="100" step="1"><em>%</em></span></label>
+            <label><i class="dot d-full"></i>Wszystkie diody<span class="num-wrap"><input type="number" data-bind="obroty.pelne" data-type="float" min="0" max="100" step="1"><em>%</em></span></label>
+            <label><i class="dot d-shift"></i>Zmiana biegu<span class="num-wrap"><input type="number" data-bind="stany.zmiana_biegu.prog" data-type="float" min="0" max="100" step="1"><em>%</em></span></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="card">
+          <div class="card-head small">
+            <h3>Kolory diod</h3>
+            <span class="muted small-text" id="selInfo">Kliknij lub przeciągnij po diodach, aby je zaznaczyć</span>
+          </div>
+          <div class="editor-bezel"><div class="strip editor-strip" id="editor" tabindex="0" aria-label="Kolory diod – zaznacz diody myszką"></div></div>
+
+          <div class="editor-tools">
+            <label class="color-btn" id="selColorWrap" title="Kolor zaznaczonych diod">
+              <input type="color" id="selColor" value="#ff0000" disabled>
+              <span class="swatch" id="selSwatch"></span><span>Kolor zaznaczonych</span>
+            </label>
+            <div class="palette" id="palette" aria-label="Szybkie kolory"></div>
+            <div class="tool-btns">
+              <button class="btn ghost sm" id="selAll">Zaznacz wszystkie</button>
+              <button class="btn ghost sm" id="selNone">Odznacz</button>
+              <button class="btn ghost sm" id="mirror" title="Skopiuj lewą połowę lustrzanie na prawą"><svg><use href="#i-mirror"/></svg>Odbicie lustrzane</button>
+            </div>
+          </div>
+
+          <div class="sub-head">Gotowe zestawy</div>
+          <div class="presets" id="presets"></div>
+
+          <div class="sub-head">Własny gradient</div>
+          <div class="gradient-row">
+            <div class="grad-stops" id="gradStops"></div>
+            <div class="grad-preview" id="gradPreview"></div>
+            <button class="btn sm" id="gradApply">Zastosuj</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">
+      <h3>Stany specjalne</h3>
+      <p class="muted small-text">Ważność: gra wyłączona → pit limiter → zmiana biegu → obroty. Flagi świecą na wierzchu. Miganie 0 Hz = świeci ciągle.</p>
+    </div>
+    <div class="states" id="states"></div>
+
+    <div class="savebar" id="savebar">
+      <div class="sb-status">
+        <span class="sb-dot" id="sbDot"></span>
+        <div><b id="sbTitle">Zapisano</b><small id="sbFile"></small></div>
+      </div>
+      <div class="sb-actions">
+        <button class="btn ghost" id="btnDefaults"><svg><use href="#i-reset"/></svg>Domyślne</button>
+        <button class="btn ghost" id="btnProfiles"><svg><use href="#i-folder"/></svg>Profile</button>
+        <button class="btn" id="btnRevert" disabled><svg><use href="#i-undo"/></svg>Cofnij zmiany</button>
+        <button class="btn primary" id="btnSave" disabled><svg><use href="#i-save"/></svg>Zapisz<kbd>Ctrl+S</kbd></button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toasts" id="toasts" popover="manual" aria-live="polite"></div>
+
+<div class="offline" id="offline" hidden>
+  <div class="offline-box">
+    <svg><use href="#i-warn"/></svg>
+    <h3>Konfigurator nie odpowiada</h3>
+    <p>Program w tle został zamknięty. Uruchom ponownie <b>Konfigurator_GT.bat</b>.<br>To okno połączy się samo, gdy program wróci.</p>
+  </div>
+</div>
+
+<dialog class="modal" id="dlgProfiles" aria-labelledby="dlgProfilesTitle">
+  <div class="modal-head">
+    <h3 id="dlgProfilesTitle">Profile kolorów</h3>
+    <button class="icon-btn ghost" data-close aria-label="Zamknij"><svg><use href="#i-x"/></svg></button>
+  </div>
+  <p class="muted small-text">Profil to zapisany zestaw ustawień diod, np. osobny dla każdej gry. Po wczytaniu profilu kliknij <b>Zapisz</b>, żeby kierownica używała go w grze.</p>
+  <div class="profile-list" id="profileList"></div>
+  <form class="profile-new" id="profileForm">
+    <input type="text" id="profileName" maxlength="40" placeholder="Nazwa nowego profilu, np. Assetto Corsa" autocomplete="off">
+    <button class="btn primary" type="submit"><svg><use href="#i-save"/></svg>Zapisz bieżące</button>
+  </form>
+  <div class="modal-foot">
+    <button class="btn ghost sm" id="btnExport"><svg><use href="#i-download"/></svg>Eksportuj do pliku</button>
+    <button class="btn ghost sm" id="btnImport"><svg><use href="#i-upload"/></svg>Importuj z pliku</button>
+    <input type="file" id="importFile" accept=".json,application/json" hidden>
+  </div>
+</dialog>
+
+<dialog class="modal" id="dlgFw" aria-labelledby="dlgFwTitle">
+  <div class="modal-head">
+    <h3 id="dlgFwTitle">Aktualizacja firmware</h3>
+    <button class="icon-btn ghost" id="fwClose" aria-label="Zamknij"><svg><use href="#i-x"/></svg></button>
+  </div>
+  <div class="fw-versions">
+    <div><small>W kierownicy</small><b id="fwCurrent">—</b></div>
+    <div class="fw-arrow">→</div>
+    <div><small>Najnowsza wersja</small><b id="fwLatest">—</b><span id="fwLatestNote" class="muted small-text"></span></div>
+  </div>
+  <div class="fw-progress" id="fwProgress" hidden>
+    <div class="fw-stage"><span id="fwStage"></span><b id="fwPct"></b></div>
+    <div class="fw-bar"><i id="fwBar"></i></div>
+    <details class="fw-details"><summary>Szczegóły</summary><pre id="fwLog"></pre></details>
+  </div>
+  <p class="note warn" id="fwWarn"><svg><use href="#i-warn"/></svg><span>Podczas wgrywania nie odłączaj kabla i nie zamykaj okna. Ustawienia diod i układ przycisków zostają na komputerze – nic się nie skasuje.</span></p>
+  <div class="modal-actions fw-actions">
+    <button class="btn ghost sm" id="fwCheck"><svg><use href="#i-reset"/></svg>Sprawdź ponownie</button>
+    <button class="btn ghost sm" id="fwFromFile"><svg><use href="#i-folder"/></svg>Wgraj z pliku .bin…</button>
+    <button class="btn primary" id="fwGo"><svg><use href="#i-upload"/></svg><span id="fwGoText">Aktualizuj</span></button>
+  </div>
+  <input type="file" id="fwFile" accept=".bin,application/octet-stream" hidden>
+</dialog>
+
+<dialog class="modal small" id="dlgConfirm">
+  <h3 id="cfTitle"></h3>
+  <p class="muted" id="cfText"></p>
+  <div class="modal-actions">
+    <button class="btn ghost" id="cfCancel">Anuluj</button>
+    <button class="btn primary" id="cfOk">OK</button>
+  </div>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>

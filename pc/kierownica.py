@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Kierownica GT - most: ESP32 (port szeregowy) -> wirtualny kontroler do gier.
+Kierownica GT - most: ESP32 (port szeregowy) -> wirtualny kontroler do gier,
+a telemetria z gry -> pasek LED w kierownicy.
 
 1. Sam znajduje port COM, do ktorego podlaczone jest ESP32 z firmware
    "kierownica_gt" (wysyla PING i czeka na "PONG KIEROWNICA_GT").
 2. Nasluchuje ten port: "BTN 10 ON" -> wirtualny przycisk 10 wcisniety.
 3. Po odlaczeniu kabla puszcza wszystkie przyciski i szuka kierownicy ponownie.
+4. Czyta telemetrie z gry (Assetto Corsa, ACC, Le Mans Ultimate) i steruje
+   paskiem LED wg ustawien z konfiguratora (plik leds.json).
 
 Emulacja kontrolera (Windows):
   * vJoy     - "zwykly" joystick DirectInput z przyciskami 1..12.
@@ -21,13 +24,16 @@ Uzycie:
   python kierownica.py --backend xbox  # wymus pad Xbox 360
   python kierownica.py --port COM5     # pomin autowykrywanie
   python kierownica.py --list          # pokaz porty COM
+  python kierownica.py --bez-diod      # nie steruj paskiem LED
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime
 
 try:
@@ -36,6 +42,9 @@ try:
 except ImportError:
     print("Brak biblioteki pyserial. Zainstaluj ja poleceniem:  pip install pyserial")
     sys.exit(1)
+
+import led_efekty as fx
+import telemetria
 
 # ------------------------------- ustawienia -------------------------------
 DEVICE_ID = "KIEROWNICA_GT"   # musi zgadzac sie z firmware ESP32
@@ -195,18 +204,30 @@ def list_candidate_ports() -> list:
     return ports
 
 
-def parse_hello(line: str) -> int | None:
-    """'PONG KIEROWNICA_GT 1.0 12' -> 12 (liczba przyciskow), inaczej None."""
+@dataclass
+class DeviceInfo:
+    n_buttons: int = 12
+    version: str = "?"
+    max_leds: int = 0      # 0 = firmware bez obslugi paska LED
+
+
+def parse_hello(line: str) -> DeviceInfo | None:
+    """'PONG KIEROWNICA_GT 1.1 12 LED 60' -> DeviceInfo(12, '1.1', 60), inaczej None."""
     parts = line.split()
     if len(parts) >= 2 and parts[0] in ("PONG", "HELLO") and parts[1] == DEVICE_ID:
+        info = DeviceInfo()
+        if len(parts) >= 3:
+            info.version = parts[2]
         if len(parts) >= 4 and parts[3].isdigit():
-            return int(parts[3])
-        return 12
+            info.n_buttons = int(parts[3])
+        if len(parts) >= 6 and parts[4] == "LED" and parts[5].isdigit():
+            info.max_leds = int(parts[5])
+        return info
     return None
 
 
 def probe(port: str, busy: list[str]):
-    """Sprawdza, czy na porcie jest kierownica. Zwraca (serial, n_przyciskow) albo None."""
+    """Sprawdza, czy na porcie jest kierownica. Zwraca (serial, DeviceInfo) albo None."""
     try:
         ser = serial.Serial(port, BAUD_RATE, timeout=0.1, write_timeout=0.5)
     except serial.SerialException as exc:
@@ -229,10 +250,10 @@ def probe(port: str, busy: list[str]):
                 except serial.SerialTimeoutException:
                     pass
             line = ser.readline().decode("ascii", errors="ignore").strip()
-            n_buttons = parse_hello(line)
-            if n_buttons is not None:
+            info = parse_hello(line)
+            if info is not None:
                 ser.timeout = 0.2
-                return ser, n_buttons
+                return ser, info
     except (serial.SerialException, OSError):
         pass
 
@@ -244,7 +265,7 @@ def probe(port: str, busy: list[str]):
 
 
 def wait_for_device(port_arg: str | None):
-    """Skanuje porty do skutku. Zwraca (nazwa_portu, serial, n_przyciskow)."""
+    """Skanuje porty do skutku. Zwraca (nazwa_portu, serial, DeviceInfo)."""
     announced = False
     while True:
         names = [port_arg] if port_arg else [p.device for p in list_candidate_ports()]
@@ -255,8 +276,8 @@ def wait_for_device(port_arg: str | None):
         for name in names:
             result = probe(name, busy)
             if result:
-                ser, n_buttons = result
-                return name, ser, n_buttons
+                ser, info = result
+                return name, ser, info
 
         if not announced:
             log("Nie znaleziono kierownicy. Podlacz ESP32 przez USB - szukam dalej... (Ctrl+C konczy)")
@@ -267,9 +288,82 @@ def wait_for_device(port_arg: str | None):
         time.sleep(RESCAN_DELAY_S)
 
 
+# ============================== diody LED ==================================
+
+class DiodyZGry(threading.Thread):
+    """Telemetria z gry -> efekty z leds.json -> komendy LEDS do kierownicy."""
+
+    FPS = 60
+
+    def __init__(self, ser, max_leds: int, czytnik, zapis_lock: threading.Lock) -> None:
+        super().__init__(daemon=True)
+        self.ser = ser
+        self.max_leds = max_leds
+        self.czytnik = czytnik
+        self.zapis_lock = zapis_lock
+        self.stop = threading.Event()
+        self._u = None
+        self._mtime = None
+
+    def _ustawienia(self) -> dict:
+        try:
+            mtime = fx.PLIK_USTAWIEN.stat().st_mtime
+        except OSError:
+            mtime = None
+        if self._u is None or mtime != self._mtime:
+            try:
+                self._u = fx.wczytaj()
+                if self._mtime is not None or mtime is not None:
+                    log("Wczytano ustawienia diod (leds.json)." if mtime else
+                        "Brak pliku leds.json - diody z ustawieniami domyslnymi.")
+            except ValueError as exc:
+                log(f"{exc} - diody z ustawieniami domyslnymi.")
+                self._u = fx.domyslne_ustawienia()
+            self._mtime = mtime
+        return self._u
+
+    def _wyslij(self, linia: str) -> bool:
+        try:
+            with self.zapis_lock:
+                self.ser.write((linia + "\n").encode("ascii"))
+            return True
+        except (serial.SerialException, OSError):
+            return False
+
+    def run(self) -> None:
+        t0 = time.monotonic()
+        ostatnia, wyslano, sprawdzono = "", 0.0, -9.0
+        opis = None
+        u = self._ustawienia()
+        while not self.stop.is_set():
+            teraz = time.monotonic()
+            if teraz - sprawdzono > 1.0:
+                sprawdzono = teraz
+                u = self._ustawienia()
+            stan = self.czytnik.odczyt()
+            komunikat = stan.opis if stan.gra or not opis else opis
+            if komunikat != opis:
+                opis = komunikat
+                log(f"Diody: {opis}")
+            kolory = fx.klatka(u, stan.telemetria(), teraz - t0)[:self.max_leds]
+            linia = fx.komenda_leds(fx.z_jasnoscia(kolory, u["jasnosc"]))
+            # ~70% przepustowosci 115200 bodow; to samo co poprzednio - tylko raz na sekunde
+            if teraz - wyslano >= max(1.0 / self.FPS, len(linia) / 8000.0) and \
+                    (linia != ostatnia or teraz - wyslano >= 1.0):
+                if not self._wyslij(linia):
+                    return
+                ostatnia, wyslano = linia, teraz
+            self.stop.wait(1.0 / self.FPS)
+        self._wyslij("LEDS")
+
+    def zatrzymaj(self) -> None:
+        self.stop.set()
+        self.join(timeout=1.0)
+
+
 # =============================== nasluch ===================================
 
-def listen(ser, backend: Backend, n_buttons: int) -> None:
+def listen(ser, backend: Backend, n_buttons: int, zapis_lock: threading.Lock | None = None) -> None:
     state: dict[int, bool] = {}
 
     def apply(number: int, pressed: bool, pin: str = "", sync: bool = False) -> None:
@@ -283,7 +377,11 @@ def listen(ser, backend: Backend, n_buttons: int) -> None:
         note = " [synchronizacja]" if sync else ""
         log(f"Przycisk {number:>2}{info} {'WLACZONY' if pressed else 'wylaczony'}{note}")
 
-    ser.write(b"STATE?\n")
+    if zapis_lock:
+        with zapis_lock:
+            ser.write(b"STATE?\n")
+    else:
+        ser.write(b"STATE?\n")
     last_rx = time.monotonic()
 
     while True:
@@ -322,6 +420,8 @@ def parse_args() -> argparse.Namespace:
                     help="rodzaj emulacji kontrolera (domyslnie: auto)")
     ap.add_argument("--vjoy-id", type=int, default=1, help="numer urzadzenia vJoy (domyslnie 1)")
     ap.add_argument("--list", action="store_true", help="wypisz porty COM i zakoncz")
+    ap.add_argument("--bez-diod", action="store_true",
+                    help="nie steruj paskiem LED (telemetria z gry wylaczona)")
     return ap.parse_args()
 
 
@@ -348,16 +448,27 @@ def main() -> None:
 
     backend = create_backend(args.backend, args.vjoy_id)
     log(f"Emulacja: {backend.name}")
+    czytnik = None if args.bez_diod else telemetria.Czytnik()
 
     try:
         while True:
-            port, ser, n_buttons = wait_for_device(args.port)
-            log(f"Polaczono z kierownica na porcie {port} ({n_buttons} przyciskow). Gotowe!")
+            port, ser, info = wait_for_device(args.port)
+            log(f"Polaczono z kierownica na porcie {port} ({info.n_buttons} przyciskow). Gotowe!")
+            zapis_lock = threading.Lock()
+            diody = None
+            if czytnik is not None:
+                if info.max_leds:
+                    diody = DiodyZGry(ser, info.max_leds, czytnik, zapis_lock)
+                    diody.start()
+                else:
+                    log("Firmware kierownicy nie obsluguje paska LED (wgraj wersje 1.1).")
             try:
-                listen(ser, backend, n_buttons)
+                listen(ser, backend, info.n_buttons, zapis_lock)
             except (serial.SerialException, OSError, ConnectionLost) as exc:
                 log(f"Utracono polaczenie z kierownica: {exc}")
             finally:
+                if diody:
+                    diody.zatrzymaj()
                 backend.release_all()
                 try:
                     ser.close()
@@ -369,6 +480,8 @@ def main() -> None:
         log("Zamykanie...")
     finally:
         backend.close()
+        if czytnik is not None:
+            czytnik.zamknij()
 
 
 if __name__ == "__main__":
