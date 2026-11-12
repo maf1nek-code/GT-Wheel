@@ -19,6 +19,7 @@ sprawdzic bez gry (patrz test na dole pliku: python telemetria.py --test).
 from __future__ import annotations
 
 import ctypes
+import math
 import struct
 import sys
 import time
@@ -56,6 +57,9 @@ FIZ_DLUGOSC = 252
 # SPageFileGraphic: status taki sam; flaga w innym miejscu (ACC ma pozycje 60 aut przed nia)
 GRAF_STATUS = 4
 GRAF_FLAGA = {"ac": 268, "acc": 1224}
+# tylko ACC: pozycje wszystkich aut (AC podaje tylko auto gracza - spotter niedostepny)
+ACC_LICZBA_AUT, ACC_POZYCJE, ACC_ID_AUT, ACC_ID_GRACZA = 252, 256, 976, 1216
+ACC_MAX_AUT = 60
 # SPageFileStatic: maxRpm po 5 napisach wchar[33] i 2 napisach wchar[15]
 STAT_MAX_RPM = 412
 STAT_DLUGOSC = 416
@@ -79,6 +83,17 @@ SC_SEKTORY = SC_INFO + 110
 SC_REALTIME = SC_INFO + 115
 SC_AUTA, SC_ROZMIAR = SC_INFO + 548, 580
 SCA_ID, SCA_SEKTOR, SCA_GRACZ, SCA_FLAGA = 0, 102, 196, 500
+SCA_POZYCJA = 264                 # mPos (3 x double) w punktacji - 5 razy/s
+TEL_POZYCJA = 160                 # mPos (3 x double) w telemetrii - zwykle 50+ razy/s
+
+# ------------------------------------------------------------------ spotter
+SPOTTER_DLUGOSC_M = 4.8           # auta zachodza na siebie, gdy roznica wzdluz toru < tyle
+SPOTTER_BOK_M = (0.9, 4.5)        # ...i w bok (min - to samo auto/zderzenie, max - dalszy pas)
+SPOTTER_WYSOKOSC_M = 3.0          # wiadukty na torze (np. Suzuka)
+# znak iloczynu wektorowego dla auta z LEWEJ zalezy od ukladu wspolrzednych gry
+# (prawoskretny w AC/ACC, lewoskretny w rFactor 2 / LMU); w ustawieniach jest
+# dodatkowo "Zamien strony", gdyby w ktorejs grze wyszlo odwrotnie
+LEWO_GDY_UJEMNY = {"acc": True, "lmu": False}
 RF2_FAZA_FCY = 6
 RF2_FLAGA_NIEBIESKA = 6
 RF2_SEKTOR_ZOLTY = 11
@@ -93,6 +108,9 @@ class Stan:
     bieg: int | None = None       # -1 = R, 0 = N, 1.. = bieg
     pit_limiter: bool = False
     flaga: str | None = None      # None / "zolta" / "niebieska"
+    auto_lewo: bool = False       # spotter: auto obok z lewej
+    auto_prawo: bool = False      # spotter: auto obok z prawej
+    spotter: bool = False         # czy gra podaje pozycje innych aut
     opis: str = ""                # komunikat dla uzytkownika
 
     @property
@@ -108,7 +126,9 @@ class Stan:
     def telemetria(self) -> fx.Telemetria:
         return fx.Telemetria(obroty=self.obroty, gra_aktywna=self.aktywna,
                              pit_limiter=self.pit_limiter,
-                             flaga=self.flaga if self.aktywna else None)
+                             flaga=self.flaga if self.aktywna else None,
+                             auto_lewo=self.auto_lewo and self.aktywna,
+                             auto_prawo=self.auto_prawo and self.aktywna)
 
     def slownik(self) -> dict:
         d = asdict(self)
@@ -133,6 +153,73 @@ def _f64(b: bytes, o: int) -> float:
 
 def _rozsadne_rpm(x: float) -> bool:
     return x == x and 0 <= x <= 30000          # x == x: odrzuca NaN
+
+
+# =============================================================== spotter
+class Spotter:
+    """Czy obok gracza jest inne auto (z lewej / z prawej).
+
+    Kierunek jazdy liczony jest z ruchu samego gracza (roznica pozycji), wiec nie
+    zalezy od tego, jak dana gra zapisuje obrot auta. Na postoju (np. pola
+    startowe, pit) spotter milczy.
+    """
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self._kotwica = None
+        self._kotwica_czas = 0.0
+        self._kierunek = None
+
+    def oblicz(self, gracz: tuple, inni: list[tuple], lewo_gdy_ujemny: bool,
+               teraz: float) -> tuple[bool, bool]:
+        gx, gy, gz = gracz
+        if self._kotwica is None:
+            self._kotwica, self._kotwica_czas = gracz, teraz
+            return False, False
+        dx, dz = gx - self._kotwica[0], gz - self._kotwica[2]
+        droga = math.hypot(dx, dz)
+        if droga > 30.0:                      # teleport (powrot do boksu, restart)
+            self.reset()
+            return False, False
+        if droga >= 0.3:
+            self._kierunek = (dx / droga, dz / droga)
+            self._kotwica, self._kotwica_czas = gracz, teraz
+        if self._kierunek is None or teraz - self._kotwica_czas > 1.0:
+            return False, False               # stoi albo jedzie bardzo wolno
+        fx_, fz = self._kierunek
+        lewo = prawo = False
+        for x, y, z in inni:
+            ox, oy, oz = x - gx, y - gy, z - gz
+            if abs(oy) > SPOTTER_WYSOKOSC_M:
+                continue
+            wzdluz = ox * fx_ + oz * fz
+            bok = fx_ * oz - fz * ox
+            if abs(wzdluz) < SPOTTER_DLUGOSC_M and SPOTTER_BOK_M[0] < abs(bok) < SPOTTER_BOK_M[1]:
+                if (bok < 0) == lewo_gdy_ujemny:
+                    lewo = True
+                else:
+                    prawo = True
+        return lewo, prawo
+
+
+def pozycje_acc(graf: bytes) -> tuple[tuple | None, list[tuple]]:
+    """(pozycja gracza, pozycje pozostalych aut) z SPageFileGraphic ACC."""
+    n = _i32(graf, ACC_LICZBA_AUT)
+    gracz_id = _i32(graf, ACC_ID_GRACZA)
+    if not 0 <= n <= ACC_MAX_AUT:
+        return None, []
+    gracz, inni = None, []
+    for i in range(n):
+        poz = struct.unpack_from("<3f", graf, ACC_POZYCJE + i * 12)
+        if not all(math.isfinite(v) for v in poz):
+            continue
+        if _i32(graf, ACC_ID_AUT + i * 4) == gracz_id:
+            gracz = poz
+        else:
+            inni.append(poz)
+    return gracz, inni
 
 
 # ============================================================ parsowanie
@@ -169,6 +256,18 @@ def gracz_lmu(punktacja: bytes) -> dict | None:
                 "niebieska": punktacja[o + SCA_FLAGA] == RF2_FLAGA_NIEBIESKA,
             }
     return None
+
+
+def pozycje_lmu_punktacja(punktacja: bytes, gracz_id: int) -> list[tuple]:
+    n = _i32(punktacja, SC_LICZBA)
+    wynik = []
+    for i in range(max(0, min(n, RF2_MAX_AUT))):
+        o = SC_AUTA + i * SC_ROZMIAR
+        if o + SC_ROZMIAR > len(punktacja):
+            break
+        if _i32(punktacja, o + SCA_ID) != gracz_id:
+            wynik.append(struct.unpack_from("<3d", punktacja, o + SCA_POZYCJA))
+    return wynik
 
 
 def parsuj_lmu(auto_tel: bytes, punktacja: bytes) -> Stan:
@@ -320,6 +419,7 @@ class Czytnik:
         self._ostatnia_gra: str | None = None
         self._punktacja = b""
         self._punktacja_czas = -999.0
+        self._spotter = Spotter()
 
     def zamknij(self) -> None:
         for m in self._ac + self._rf2:
@@ -348,6 +448,7 @@ class Czytnik:
         if stan.gra != self._ostatnia_gra:
             self._ostatnia_gra = stan.gra
             self._max_widziane = 0.0
+            self._spotter.reset()
         # maks. obroty: z gry, a gdy gra ich nie podaje - najwyzsze zobaczone
         if stan.aktywna:
             self._max_widziane = max(self._max_widziane, stan.rpm)
@@ -389,13 +490,20 @@ class Czytnik:
         if not all(m.otworz() for m in self._ac):
             return Stan(gra=gra, opis=f"{nazwa} działa – czekam na dane (wejdź na tor).")
         fiz = self._ac[0].czytaj(0, FIZ_DLUGOSC)
-        graf = self._ac[1].czytaj(0, GRAF_FLAGA[gra] + 4)
+        graf = self._ac[1].czytaj(0, max(GRAF_FLAGA[gra], ACC_ID_GRACZA) + 4 if gra == "acc"
+                                  else GRAF_FLAGA[gra] + 4)
         stat = self._ac[2].czytaj(0, STAT_DLUGOSC)
         if fiz is None or graf is None or stat is None:
             return Stan(gra=gra, opis=f"Nieznany format danych z gry {nazwa}.")
         stan = parsuj_ac(gra, fiz, graf, stat)
         swieze = self._swieze(("ac", _i32(fiz, FIZ_PAKIET)), teraz)
         stan.aktywna = stan.aktywna and swieze
+        if gra == "acc" and stan.aktywna:
+            stan.spotter = True
+            gracz, inni = pozycje_acc(graf)
+            if gracz is not None:
+                stan.auto_lewo, stan.auto_prawo = self._spotter.oblicz(
+                    gracz, inni, LEWO_GDY_UJEMNY["acc"], teraz)
         if not stan.opis:
             stan.opis = f"{nazwa}: jazda" if stan.aktywna else f"{nazwa}: menu, pauza lub powtórka"
         return stan
@@ -436,12 +544,16 @@ class Czytnik:
             if not 0 <= n <= RF2_MAX_AUT:
                 return Stan(gra="lmu", opis=f"Nieznany format danych z gry {nazwa}.")
             auto = None
+            inni = []
             for i in range(n):
                 o = TEL_POCZATEK + i * TEL_ROZMIAR
-                ident = tel.czytaj(o + TEL_ID, 4)
-                if ident is not None and _i32(ident, 0) == gracz["id"]:
-                    auto = tel.czytaj(o, TEL_POTRZEBNE)
+                kawalek = tel.czytaj(o, TEL_POZYCJA + 24)
+                if kawalek is None:
                     break
+                if _i32(kawalek, TEL_ID) == gracz["id"]:
+                    auto = tel.czytaj(o, TEL_POTRZEBNE)
+                else:
+                    inni.append(struct.unpack_from("<3d", kawalek, TEL_POZYCJA))
             koniec = tel.czytaj(0, 8)
             if koniec is not None and _u32(nagl, 0) == _u32(koniec, 4) == _u32(koniec, 0):
                 break
@@ -452,6 +564,15 @@ class Czytnik:
         stan = parsuj_lmu(auto, self._punktacja)
         swieze = self._swieze(("lmu", _f64(auto, TEL_CZAS)), teraz)
         stan.aktywna = stan.aktywna and swieze
+        if stan.aktywna:
+            stan.spotter = True
+            if not inni:   # telemetria tylko auta gracza - pozycje innych z punktacji (5/s)
+                inni = pozycje_lmu_punktacja(self._punktacja, gracz["id"])
+            poz = struct.unpack_from("<3d", auto, TEL_POZYCJA)
+            inni = [p for p in inni if all(math.isfinite(v) for v in p)]
+            if all(math.isfinite(v) for v in poz):
+                stan.auto_lewo, stan.auto_prawo = self._spotter.oblicz(
+                    poz, inni, LEWO_GDY_UJEMNY["lmu"], teraz)
         if not stan.opis:
             stan.opis = f"{nazwa}: jazda" if stan.aktywna else f"{nazwa}: menu, pauza lub garaż"
         return stan
@@ -502,6 +623,24 @@ def _test() -> None:
     assert gracz_lmu(bytes(pkt))["id"] == 11
     pkt[SC_AUTA + SC_ROZMIAR + SCA_FLAGA] = RF2_FLAGA_NIEBIESKA
     assert parsuj_lmu(bytes(auto), bytes(pkt)).flaga == "niebieska"
+    # spotter: gracz jedzie wzdluz +z; auto 2,5 m w bok po stronie -x i drugie po +x
+    sp = Spotter()
+    assert sp.oblicz((0, 0, 0), [], True, 0.0) == (False, False)
+    obok = [(-2.5, 0, 1.0)]
+    l1 = sp.oblicz((0, 0, 1.0), [(-2.5, 0, 2.0)], True, 0.05)
+    l2 = sp.oblicz((0, 0, 2.0), [(2.5, 0, 3.0)], True, 0.10)
+    assert l1 != (False, False) and l2 != (False, False) and l1 != l2, (l1, l2)
+    assert sp.oblicz((0, 0, 3.0), [(-2.5, 0, 3.0)], False, 0.15) == (l1[1], l1[0])  # druga gra = odwrotnie
+    assert sp.oblicz((0, 0, 4.0), [(0, 0, 14.0)], True, 0.2) == (False, False)      # daleko z przodu
+    assert sp.oblicz((0, 0, 5.0), [(-2.5, 8, 5.0)], True, 0.25) == (False, False)   # wiadukt
+    assert sp.oblicz((0, 0, 5.1), obok, True, 2.0) == (False, False)                # postoj > 1 s
+    graf = bytearray(ACC_ID_GRACZA + 4)
+    struct.pack_into("<i", graf, ACC_LICZBA_AUT, 2)
+    struct.pack_into("<3f", graf, ACC_POZYCJE, 1.0, 2.0, 3.0)
+    struct.pack_into("<3f", graf, ACC_POZYCJE + 12, 4.0, 5.0, 6.0)
+    struct.pack_into("<2i", graf, ACC_ID_AUT, 7, 9)
+    struct.pack_into("<i", graf, ACC_ID_GRACZA, 9)
+    assert pozycje_acc(bytes(graf)) == ((4.0, 5.0, 6.0), [(1.0, 2.0, 3.0)])
     print("telemetria: test parsowania OK")
 
 

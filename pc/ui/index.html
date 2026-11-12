@@ -32,6 +32,7 @@
   <symbol id="i-gear" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M13 3 4.5 13.5H11L10 21l8.5-10.5H12L13 3Z"/></symbol>
   <symbol id="i-pit" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><text x="12" y="15.6" text-anchor="middle" font-size="8.5" font-weight="800" fill="currentColor" font-family="Segoe UI, sans-serif">PIT</text></symbol>
   <symbol id="i-flag" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M5 21V4"/><path fill="currentColor" d="M6 4.5h12.5l-2.8 4.3 2.8 4.2H6Z"/></symbol>
+  <symbol id="i-spotter" viewBox="0 0 24 24"><rect x="8.5" y="3.5" width="7" height="17" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4.5 9 2 12l2.5 3M19.5 9 22 12l-2.5 3"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M20 14.6A8.5 8.5 0 0 1 9.4 4a8.5 8.5 0 1 0 10.6 10.6Z"/></symbol>
 </svg>
 
@@ -65,6 +66,7 @@
         <button class="btn" id="btnDisconnect">Rozłącz</button>
         <button class="btn primary" id="btnConnect"><svg><use href="#i-plug"/></svg>Połącz</button>
       </div>
+      <button class="btn ghost sm pop-fw" id="btnFw"><svg><use href="#i-upload"/></svg>Aktualizacja firmware<span class="fw-badge" id="fwBadge" hidden>nowa wersja</span></button>
       <p class="pop-hint">Port COM może mieć otwarty tylko jeden program. Na czas konfiguracji zamknij <b>Kierownica_GT.bat</b> i Serial Monitor.</p>
     </div>
   </div>
@@ -73,6 +75,11 @@
 <main>
   <!-- ======================= TEST PRZYCISKÓW ======================= -->
   <section class="tab" id="tab-przyciski" role="tabpanel" aria-labelledby="tabbtn-przyciski">
+    <div class="fw-banner" id="fwBanner" hidden>
+      <div class="fwb-icon"><svg><use href="#i-upload"/></svg></div>
+      <div class="fwb-text"><b>Dostępna nowa wersja firmware: <span id="fwbNew"></span></b><span>W kierownicy jest wersja <span id="fwbOld"></span>. Aktualizacja trwa ok. 30 sekund.</span></div>
+      <button class="btn primary sm" id="fwbOpen">Aktualizuj</button>
+    </div>
     <div class="buttons-layout">
       <div class="card wheel-card">
         <div class="card-head">
@@ -184,6 +191,7 @@
           <div><small>Bieg</small><b id="giGear">—</b></div>
           <div><small>Pit limiter</small><b id="giPit">—</b></div>
           <div><small>Flaga</small><b id="giFlag">—</b></div>
+          <div><small>Spotter</small><b id="giSpot">—</b></div>
         </div>
       </div>
     </div>
@@ -326,6 +334,30 @@
     <button class="btn ghost sm" id="btnImport"><svg><use href="#i-upload"/></svg>Importuj z pliku</button>
     <input type="file" id="importFile" accept=".json,application/json" hidden>
   </div>
+</dialog>
+
+<dialog class="modal" id="dlgFw" aria-labelledby="dlgFwTitle">
+  <div class="modal-head">
+    <h3 id="dlgFwTitle">Aktualizacja firmware</h3>
+    <button class="icon-btn ghost" id="fwClose" aria-label="Zamknij"><svg><use href="#i-x"/></svg></button>
+  </div>
+  <div class="fw-versions">
+    <div><small>W kierownicy</small><b id="fwCurrent">—</b></div>
+    <div class="fw-arrow">→</div>
+    <div><small>Najnowsza wersja</small><b id="fwLatest">—</b><span id="fwLatestNote" class="muted small-text"></span></div>
+  </div>
+  <div class="fw-progress" id="fwProgress" hidden>
+    <div class="fw-stage"><span id="fwStage"></span><b id="fwPct"></b></div>
+    <div class="fw-bar"><i id="fwBar"></i></div>
+    <details class="fw-details"><summary>Szczegóły</summary><pre id="fwLog"></pre></details>
+  </div>
+  <p class="note warn" id="fwWarn"><svg><use href="#i-warn"/></svg><span>Podczas wgrywania nie odłączaj kabla i nie zamykaj okna. Ustawienia diod i układ przycisków zostają na komputerze – nic się nie skasuje.</span></p>
+  <div class="modal-actions fw-actions">
+    <button class="btn ghost sm" id="fwCheck"><svg><use href="#i-reset"/></svg>Sprawdź ponownie</button>
+    <button class="btn ghost sm" id="fwFromFile"><svg><use href="#i-folder"/></svg>Wgraj z pliku .bin…</button>
+    <button class="btn primary" id="fwGo"><svg><use href="#i-upload"/></svg><span id="fwGoText">Aktualizuj</span></button>
+  </div>
+  <input type="file" id="fwFile" accept=".bin,application/octet-stream" hidden>
 </dialog>
 
 <dialog class="modal small" id="dlgConfirm">

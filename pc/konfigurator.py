@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import tempfile
 import queue
 import re
 import shutil
@@ -36,6 +37,7 @@ import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import urllib.parse
 from urllib.parse import urlsplit
 
 try:
@@ -44,6 +46,7 @@ except ImportError:
     print("Brak biblioteki pyserial. Zainstaluj ja poleceniem:  pip install pyserial")
     sys.exit(1)
 
+import firmware
 import led_efekty as fx
 import telemetria
 from kierownica import list_candidate_ports, probe
@@ -68,7 +71,7 @@ TYPY_PLIKOW = {
     ".ico": "image/x-icon",
 }
 
-STANY_SYMULACJI = ("gra", "jazda", "pit", "zolta", "niebieska", "brak_gry")
+STANY_SYMULACJI = ("gra", "jazda", "pit", "zolta", "niebieska", "spotter", "brak_gry")
 ZAREZERWOWANE_NAZWY = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(10)),
                        *(f"lpt{i}" for i in range(10))}
 
@@ -165,6 +168,11 @@ class Aplikacja:
         self.piny: dict[int, str] = {}
         self.bity = ""
 
+        # aktualizacja firmware
+        self.fw = {"stan": "bezczynny", "procent": 0, "tekst": "", "log": []}
+        self.fw_najnowsza: dict | None = None
+        self.fw_blad: str | None = None
+
         # wysylanie na pasek
         self._ser_lock = threading.Lock()
         self._ostatnia_linia = ""
@@ -244,6 +252,106 @@ class Aplikacja:
                 wynik[k] = v
         return wynik
 
+    # ------------------------------------------------------ aktualizacja firmware
+    @property
+    def fw_trwa(self) -> bool:
+        return self.fw["stan"] in ("pobieranie", "wgrywanie", "restart")
+
+    def _fw(self, **zmiany) -> None:
+        with self.lock:
+            linia = zmiany.pop("linia", None)
+            self.fw.update(zmiany)
+            if linia:
+                self.fw["log"] = (self.fw["log"] + [linia])[-200:]
+            self.radio.wyslij({"t": "fw", "fw": self.fw})
+
+    def fw_sprawdz(self) -> None:
+        try:
+            self.fw_najnowsza, self.fw_blad = firmware.sprawdz_github(), None
+        except firmware.BladFirmware as exc:
+            self.fw_blad = str(exc)
+        self.radio.wyslij({"t": "fw_najnowsza", "najnowsza": self.fw_najnowsza,
+                           "blad": self.fw_blad})
+
+    def fw_start(self, dane: bytes | None, nazwa: str) -> None:
+        """dane=None -> najnowsze wydanie z GitHuba; inaczej plik wybrany przez uzytkownika."""
+        with self.lock:
+            if self.fw_trwa:
+                raise ValueError("Aktualizacja już trwa.")
+            if self.status.get("stan") != "polaczono" or not self.status.get("port"):
+                raise ValueError("Najpierw podłącz kierownicę – aktualizacja wgrywa się przez "
+                                 "ten sam kabel USB.")
+            port = self.status["port"]
+            stara = self.info.version if self.info else "?"
+            self.fw = {"stan": "pobieranie", "procent": 0, "tekst": "Przygotowanie…", "log": [],
+                       "stara": stara, "nowa": None}
+        threading.Thread(target=self._fw_praca, args=(port, stara, dane, nazwa),
+                         daemon=True).start()
+
+    def _fw_praca(self, port: str, stara: str, dane: bytes | None, nazwa: str) -> None:
+        plik = None
+        zwolniony = False
+        try:
+            if dane is None:
+                najnowsza = firmware.sprawdz_github()
+                if not najnowsza:
+                    raise firmware.BladFirmware("Na GitHubie nie ma jeszcze żadnego wydania "
+                                                "firmware.")
+                self._fw(nowa=najnowsza["wersja"], tekst=f"Pobieranie wersji {najnowsza['wersja']}…",
+                         linia=f"Pobieranie {najnowsza['nazwa']}")
+                dane = firmware.pobierz(najnowsza["url"],
+                                        lambda p: self._fw(procent=p, tekst="Pobieranie…"))
+            else:
+                self._fw(linia=f"Plik z dysku: {nazwa} ({len(dane) // 1024} KB)")
+            adres = firmware.rozpoznaj(dane)
+            with tempfile.NamedTemporaryFile(prefix="kgt_fw_", suffix=".bin", delete=False) as t:
+                t.write(dane)
+                plik = t.name
+
+            # zwolnij port - esptool musi go otworzyc sam
+            self._fw(stan="wgrywanie", procent=0, tekst="Zwalnianie portu…")
+            self.rozlacz()
+            zwolniony = True
+            koniec = time.monotonic() + 5
+            while self.ser is not None and time.monotonic() < koniec:
+                time.sleep(0.05)
+            time.sleep(0.3)
+            self._fw(linia=f"Wgrywanie na {port} pod adres {hex(adres)}")
+            firmware.wgraj(port, plik, adres,
+                           lambda p, t: self._fw(**({"procent": p} if p is not None else {}),
+                                                 tekst=t),
+                           lambda linia: self._fw(linia=linia))
+
+            self._fw(stan="restart", procent=100, tekst="Kierownica uruchamia się ponownie…")
+            time.sleep(1.5)
+            self.polacz(port)
+            koniec = time.monotonic() + 20
+            while time.monotonic() < koniec and self.status.get("stan") != "polaczono":
+                time.sleep(0.2)
+            nowa = self.info.version if self.info and self.status.get("stan") == "polaczono" \
+                else None
+            if nowa:
+                tekst = (f"Gotowe! Firmware {stara} → {nowa}." if nowa != stara
+                         else f"Gotowe! Wgrano ponownie wersję {nowa}.")
+            else:
+                tekst = "Wgrano firmware, ale kierownica jeszcze się nie zgłosiła – sprawdź kabel."
+            log(tekst)
+            self._fw(stan="gotowe", tekst=tekst, nowa=nowa, linia=tekst)
+        except firmware.BladFirmware as exc:
+            self._fw(stan="blad", tekst=str(exc), linia=f"BŁĄD: {exc}")
+            if zwolniony:
+                self.polacz(port)
+        except Exception as exc:  # nie zostawiaj okna w stanie "trwa"
+            self._fw(stan="blad", tekst=f"Nieoczekiwany błąd: {exc!r}", linia=repr(exc))
+            if zwolniony:
+                self.polacz(port)
+        finally:
+            if plik:
+                try:
+                    os.unlink(plik)
+                except OSError:
+                    pass
+
     # ------------------------------------------------------------- migawka
     def migawka(self) -> dict:
         with self.lock:
@@ -260,6 +368,9 @@ class Aplikacja:
                 "bity": self.bity,
                 "blad": self.blad_wczytania,
                 "uklad": self.wczytaj_uklad(),
+                "fw": self.fw,
+                "fw_najnowsza": self.fw_najnowsza,
+                "fw_blad": self.fw_blad,
                 "opcje": {
                     "kierunki": fx.KIERUNKI,
                     "wzory_pit": fx.WZORY_PIT,
@@ -438,7 +549,10 @@ class Aplikacja:
 
     # ============================== animacja ===============================
     @staticmethod
-    def _telemetria(stan: str, obroty: float) -> fx.Telemetria:
+    def _telemetria(stan: str, obroty: float, t: float = 0.0) -> fx.Telemetria:
+        if stan == "spotter":            # na zmiane: auto z lewej, z prawej, z obu stron
+            faza = int(t / 1.2) % 3
+            return fx.Telemetria(obroty=obroty, auto_lewo=faza != 1, auto_prawo=faza != 0)
         return fx.Telemetria(
             obroty=obroty,
             gra_aktywna=stan != "brak_gry",
@@ -475,13 +589,14 @@ class Aplikacja:
             sim = dict(self.sim)
 
         tel = self.gra.telemetria() if sim["stan"] == "gra" else \
-            self._telemetria(sim["stan"], sim["obroty"])
+            self._telemetria(sim["stan"], sim["obroty"], t)
         glowna = fx.klatka(u, tel, t)
         mini = {
             "zmiana_biegu": fx.klatka(u, self._telemetria("jazda", 1.0), t),
             "pit_limiter": fx.klatka(u, self._telemetria("pit", 0.5), t),
             "flaga_zolta": fx.klatka(u, self._telemetria("zolta", 0.75), t),
             "flaga_niebieska": fx.klatka(u, self._telemetria("niebieska", 0.75), t),
+            "spotter": fx.klatka(u, self._telemetria("spotter", 0.75, t), t),
             "brak_gry": fx.klatka(u, self._telemetria("brak_gry", 0.0), t),
         }
         self._na_pasek(glowna, u, sim)
@@ -653,6 +768,9 @@ def stworz_obsluge(app: Aplikacja, port_http: list):
                 self._odpowiedz(403, b"Forbidden", "text/plain")
                 return
             sciezka = urlsplit(self.path).path
+            if sciezka == "/api/fw/plik":
+                self._fw_plik()
+                return
             try:
                 dane = self._cialo()
                 wynik = self._akcja(sciezka, dane)
@@ -666,6 +784,24 @@ def stworz_obsluge(app: Aplikacja, port_http: list):
                 self._json({"ok": False, "blad": "Nieznana akcja."}, 404)
                 return
             self._json({"ok": True, **wynik})
+
+        def _fw_plik(self) -> None:
+            try:
+                dlugosc = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                dlugosc = -1
+            if not 0 < dlugosc <= firmware.MAX_ROZMIAR:
+                self._json({"ok": False, "blad": "Plik jest pusty albo za duży."}, 400)
+                return
+            dane = self.rfile.read(dlugosc)
+            nazwa = urllib.parse.unquote(self.headers.get("X-Nazwa-Pliku") or "plik.bin")[:120]
+            try:
+                firmware.rozpoznaj(dane)
+                app.fw_start(dane, nazwa)
+            except (firmware.BladFirmware, ValueError) as exc:
+                self._json({"ok": False, "blad": str(exc)}, 400)
+                return
+            self._json({"ok": True})
 
         def _akcja(self, sciezka: str, d: dict) -> dict | None:
             if sciezka == "/api/ustawienia":
@@ -724,7 +860,17 @@ def stworz_obsluge(app: Aplikacja, port_http: list):
                 return {"kolory": [fx.kolor_na_hex(c)
                                    for c in fx.kolory_gradient(n, kierunek, punkty)]}
 
+            if sciezka == "/api/fw/sprawdz":
+                app.fw_sprawdz()
+                return {"najnowsza": app.fw_najnowsza, "blad": app.fw_blad}
+
+            if sciezka == "/api/fw/aktualizuj":
+                app.fw_start(None, "")
+                return {}
+
             if sciezka == "/api/polacz":
+                if app.fw_trwa:
+                    raise BladZapytania("Trwa aktualizacja firmware.")
                 port = d.get("port") or None
                 if port is not None and (not isinstance(port, str) or len(port) > 200):
                     raise BladZapytania("Zły port.")
@@ -746,6 +892,8 @@ def stworz_obsluge(app: Aplikacja, port_http: list):
                 return {"uklad": uklad}
 
             if sciezka == "/api/rozlacz":
+                if app.fw_trwa:
+                    raise BladZapytania("Trwa aktualizacja firmware.")
                 app.rozlacz()
                 return {}
 
@@ -857,6 +1005,7 @@ def main() -> None:
 
     threading.Thread(target=app.watek_kierownicy, daemon=True).start()
     threading.Thread(target=app.watek_animacji, daemon=True).start()
+    threading.Thread(target=app.fw_sprawdz, daemon=True).start()   # czy jest nowszy firmware
 
     def straznik() -> None:
         """Konczy program, gdy okno zostalo zamkniete."""

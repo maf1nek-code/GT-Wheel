@@ -16,7 +16,9 @@ przez USB (port szeregowy), a program w Pythonie zamienia je na wirtualny kontro
 | `pc/konfigurator.py` | konfigurator: obsługa kierownicy i efektów LED w tle, otwiera okno z `pc/ui` |
 | `pc/ui/` | wygląd konfiguratora (HTML/CSS/JS) |
 | `pc/led_efekty.py` | liczenie efektów LED (obroty, zmiana biegu, pit limiter, flagi) |
-| `pc/telemetria.py` | odczyt telemetrii z AC, ACC i Le Mans Ultimate |
+| `pc/telemetria.py` | odczyt telemetrii z AC, ACC i Le Mans Ultimate (z spotterem) |
+| `pc/firmware.py` | aktualizacja firmware: wydania z GitHuba + esptool |
+| `.github/workflows/firmware.yml` | budowanie firmware i publikowanie wydań |
 | `pc/requirements.txt` | biblioteki Pythona |
 | `Kierownica_GT.bat` | uruchamianie dwuklikiem (sam instaluje biblioteki za 1. razem) |
 | `Konfigurator_GT.bat` | uruchamianie konfiguratora dwuklikiem |
@@ -156,6 +158,9 @@ według ustawień z konfiguratora (`pc/leds.json`):
 
 - obroty → kolejne diody, od progu „zmiana biegu” cały pasek miga,
 - pit limiter, flaga żółta i niebieska → efekty ze „Stanów specjalnych”,
+- **spotter** (ACC i Le Mans Ultimate): auto obok ciebie zapala skrajne diody po jego stronie.
+  Assetto Corsa nie podaje pozycji innych aut, więc tam spotter nie działa. Jeśli w którejś grze
+  strony wyjdą odwrotnie, w karcie „Spotter” włącz „Zamień lewą i prawą stronę”,
 - menu, pauza, powtórka albo brak gry → efekt „Gra wyłączona”.
 
 Zmiany zapisane w konfiguratorze są wczytywane w trakcie jazdy, bez restartu. Konfigurator i
@@ -180,7 +185,23 @@ danych”; jeśli używasz SimHub albo CrewChief, zwykle jest już włączona):
 Sprawdzenie bez kierownicy (w folderze projektu, po pierwszym uruchomieniu `.bat`):
 `pc\.venv\Scripts\python.exe pc\telemetria.py` wypisuje na żywo odczyty z gry.
 
-## 5. Uruchomienie
+## 5. Aktualizacja firmware z konfiguratora
+
+Po pierwszym wgraniu przez Arduino IDE kolejne wersje wgrywa konfigurator: kliknij status połączenia
+(prawy górny róg) → **Aktualizacja firmware**. Gdy jest nowsza wersja, na stronie głównej pojawia się
+też pasek „Dostępna nowa wersja firmware”. Aktualizacja trwa ok. 30 s, idzie tym samym kablem USB,
+a ustawienia diod i układ przycisków zostają na komputerze.
+
+- Pliki firmware buduje **GitHub Actions** (`.github/workflows/firmware.yml`) przy każdej zmianie
+  w `esp32/`. Na gałęzi głównej powstaje wydanie `fw-<wersja>`, które konfigurator pobiera.
+  Żeby wydać nową wersję, podnieś `FW_VERSION` w `kierownica_gt.ino`.
+- **Wgraj z pliku .bin…** – plik z Arduino IDE (*Szkic → Eksportuj skompilowany plik binarny*,
+  najlepiej `kierownica_gt.ino.merged.bin`) albo pobrany z zakładki Releases na GitHubie.
+- Wgrywa narzędzie **esptool** (to samo co w Arduino IDE), instalowane automatycznie przez `.bat`.
+- Gdy wgrywanie nie może się połączyć: przytrzymaj **BOOT** na płytce, kliknij „Aktualizuj” i puść
+  BOOT, gdy pojawi się „Łączenie”.
+
+## 6. Uruchomienie
 
 Kliknij dwukrotnie **`Kierownica_GT.bat`**. Wymagany jest Python 3 z <https://python.org>, z
 zaznaczoną opcją *Add python.exe to PATH*.
