@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime
 
 try:
@@ -195,18 +196,30 @@ def list_candidate_ports() -> list:
     return ports
 
 
-def parse_hello(line: str) -> int | None:
-    """'PONG KIEROWNICA_GT 1.0 12' -> 12 (liczba przyciskow), inaczej None."""
+@dataclass
+class DeviceInfo:
+    n_buttons: int = 12
+    version: str = "?"
+    max_leds: int = 0      # 0 = firmware bez obslugi paska LED
+
+
+def parse_hello(line: str) -> DeviceInfo | None:
+    """'PONG KIEROWNICA_GT 1.1 12 LED 60' -> DeviceInfo(12, '1.1', 60), inaczej None."""
     parts = line.split()
     if len(parts) >= 2 and parts[0] in ("PONG", "HELLO") and parts[1] == DEVICE_ID:
+        info = DeviceInfo()
+        if len(parts) >= 3:
+            info.version = parts[2]
         if len(parts) >= 4 and parts[3].isdigit():
-            return int(parts[3])
-        return 12
+            info.n_buttons = int(parts[3])
+        if len(parts) >= 6 and parts[4] == "LED" and parts[5].isdigit():
+            info.max_leds = int(parts[5])
+        return info
     return None
 
 
 def probe(port: str, busy: list[str]):
-    """Sprawdza, czy na porcie jest kierownica. Zwraca (serial, n_przyciskow) albo None."""
+    """Sprawdza, czy na porcie jest kierownica. Zwraca (serial, DeviceInfo) albo None."""
     try:
         ser = serial.Serial(port, BAUD_RATE, timeout=0.1, write_timeout=0.5)
     except serial.SerialException as exc:
@@ -229,10 +242,10 @@ def probe(port: str, busy: list[str]):
                 except serial.SerialTimeoutException:
                     pass
             line = ser.readline().decode("ascii", errors="ignore").strip()
-            n_buttons = parse_hello(line)
-            if n_buttons is not None:
+            info = parse_hello(line)
+            if info is not None:
                 ser.timeout = 0.2
-                return ser, n_buttons
+                return ser, info
     except (serial.SerialException, OSError):
         pass
 
@@ -244,7 +257,7 @@ def probe(port: str, busy: list[str]):
 
 
 def wait_for_device(port_arg: str | None):
-    """Skanuje porty do skutku. Zwraca (nazwa_portu, serial, n_przyciskow)."""
+    """Skanuje porty do skutku. Zwraca (nazwa_portu, serial, DeviceInfo)."""
     announced = False
     while True:
         names = [port_arg] if port_arg else [p.device for p in list_candidate_ports()]
@@ -255,8 +268,8 @@ def wait_for_device(port_arg: str | None):
         for name in names:
             result = probe(name, busy)
             if result:
-                ser, n_buttons = result
-                return name, ser, n_buttons
+                ser, info = result
+                return name, ser, info
 
         if not announced:
             log("Nie znaleziono kierownicy. Podlacz ESP32 przez USB - szukam dalej... (Ctrl+C konczy)")
@@ -351,10 +364,10 @@ def main() -> None:
 
     try:
         while True:
-            port, ser, n_buttons = wait_for_device(args.port)
-            log(f"Polaczono z kierownica na porcie {port} ({n_buttons} przyciskow). Gotowe!")
+            port, ser, info = wait_for_device(args.port)
+            log(f"Polaczono z kierownica na porcie {port} ({info.n_buttons} przyciskow). Gotowe!")
             try:
-                listen(ser, backend, n_buttons)
+                listen(ser, backend, info.n_buttons)
             except (serial.SerialException, OSError, ConnectionLost) as exc:
                 log(f"Utracono polaczenie z kierownica: {exc}")
             finally:

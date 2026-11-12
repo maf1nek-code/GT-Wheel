@@ -13,8 +13,11 @@ przez USB (port szeregowy), a program w Pythonie zamienia je na wirtualny kontro
 |---|---|
 | `esp32/kierownica_gt/kierownica_gt.ino` | firmware do wgrania z Arduino IDE |
 | `pc/kierownica.py` | program na PC: autowykrywanie portu + emulacja kontrolera |
+| `pc/konfigurator.py` | okienko konfiguracji: test przycisków i ustawienia diod LED |
+| `pc/led_efekty.py` | liczenie efektów LED (obroty, zmiana biegu, pit limiter, flagi) |
 | `pc/requirements.txt` | biblioteki Pythona |
 | `Kierownica_GT.bat` | uruchamianie dwuklikiem (sam instaluje biblioteki za 1. razem) |
+| `Konfigurator_GT.bat` | uruchamianie konfiguratora dwuklikiem |
 
 ## Przyciski i piny (ESP32-WROOM-32 / ESP32 DevKit)
 
@@ -46,11 +49,28 @@ Pominięte są piny, które sprawiają problemy:
 - GPIO 6–11: pamięć flash.
 - GPIO 34–39: tylko wejścia, bez pull-upa.
 
-Zapasowe dobre piny: GPIO 13, 16 i 17.
+Zapasowe dobre piny: GPIO 16 i 17 (GPIO 13 jest zajęty przez pasek LED).
+
+## Pasek LED (opcjonalny)
+
+Pasek WS2812B (np. 8–24 diody) pokazuje obroty silnika i stany specjalne. Kolory liczy program
+na PC, a ESP32 tylko je wyświetla, więc zmiana kolorów nie wymaga ponownego wgrywania firmware.
+
+| Pasek | ESP32 |
+|---|---|
+| DIN | **GPIO13** przez rezystor ok. 330 Ω |
+| 5V | pin **VIN/5V** płytki |
+| GND | **GND** |
+
+- Przy zasilaniu z USB trzymaj jasność ≤ 40%. Każda dioda świecąca na biało na 100% pobiera
+  ok. 60 mA. Przy dłuższym pasku użyj osobnego zasilacza 5 V (GND wspólne z ESP32).
+- Firmware obsługuje do 60 diod. Bez danych z PC przez 3 s pasek gaśnie.
+- Bez paska możesz zostawić firmware bez zmian albo ustawić `LED_ENABLED` na `0`.
 
 ## 1. Wgranie firmware (Arduino IDE)
 
 1. *Boards Manager* → zainstaluj pakiet **esp32** by Espressif Systems.
+   *Tools → Manage Libraries* → zainstaluj **Adafruit NeoPixel** (do paska LED).
 2. *Tools → Board* → **ESP32 Dev Module**. W Windows może być potrzebny sterownik **CP210x**
    albo **CH340**, zależnie od układu USB na płytce.
 3. Otwórz `esp32/kierownica_gt/kierownica_gt.ino` i kliknij **Upload**. Jeśli wgrywanie stoi na
@@ -65,7 +85,13 @@ Protokół (tekst, 115200 baud):
 |---|---|
 | `BTN <nr> ON <pin>` / `BTN <nr> OFF <pin>` | zmiana stanu przycisku |
 | `STATE 000000000100` | pełny stan, wysyłany co 1 s (1 = wciśnięty) |
-| `PONG KIEROWNICA_GT 1.0 12` | odpowiedź na `PING` (po niej PC rozpoznaje kierownicę) |
+| `PONG KIEROWNICA_GT 1.1 12 LED 60` | odpowiedź na `PING` (po niej PC rozpoznaje kierownicę; `LED 60` = obsługa paska do 60 diod) |
+
+| Od PC | Znaczenie |
+|---|---|
+| `PING` / `STATE?` / `INFO` | powitanie / pełny stan przycisków / lista pinów |
+| `LEDS RRGGBBRRGGBB…` | kolory paska (6 znaków hex na diodę, jasność już uwzględniona) |
+| `LEDS` | zgaś pasek |
 
 ## 2. Sterownik wirtualnego kontrolera (Windows)
 
@@ -80,7 +106,36 @@ Wybierz jeden:
 
 Domyślny tryb `auto` używa vJoy, a gdy go nie ma, pada Xbox.
 
-## 3. Uruchomienie
+## 3. Konfigurator (test przycisków i diody LED)
+
+Kliknij dwukrotnie **`Konfigurator_GT.bat`**. Okno samo znajdzie kierownicę.
+Port COM może mieć otwarty tylko jeden program, więc najpierw zamknij `Kierownica_GT.bat`
+i Serial Monitor.
+
+**Zakładka „Test przycisków”**: wciskaj po kolei przyciski. Wciśnięty kafelek świeci na zielono,
+sprawdzony dostaje ✓, a pasek postępu pokazuje, ile przycisków już działa. Przycisk wciśnięty
+już w chwili połączenia jest oznaczony na pomarańczowo, bo może to oznaczać zwarcie pinu do GND.
+Dziennik pokazuje każde wciśnięcie i czas trzymania.
+
+**Zakładka „Diody LED”**:
+
+- liczba diod, jasność, kierunek zapalania (od lewej, od prawej, od środka, z boków),
+- kolor każdej diody (klik zaznacza, dwuklik zmienia kolor), gotowe zestawy kolorów i własny gradient,
+- progi: przy ilu % obrotów zapala się pierwsza dioda, a przy ilu wszystkie,
+- stany specjalne z własnym kolorem i szybkością migania: zmiana biegu (limiter), pit limiter
+  (3 wzory), flaga żółta i niebieska (na skrajnych diodach albo całym pasku), gra wyłączona
+  (zgaszone, stały kolor, oddech, skaner),
+- podgląd na żywo i symulacja jazdy bez uruchamiania gry. Jeśli kierownica jest podłączona,
+  podgląd świeci też na prawdziwym pasku.
+
+Ustawienia zapisują się do `pc/leds.json` (przycisk **Zapisz** albo Ctrl+S). Plik nie jest w gicie,
+więc aktualizacje go nie nadpiszą. „Zapisz jako…” pozwala trzymać kilka profili, np. osobno dla
+każdej gry.
+
+> Telemetria z gier (obroty w trakcie jazdy) to następny krok. Konfigurator już przygotowuje
+> ustawienia, z których będzie korzystał program w czasie gry.
+
+## 4. Uruchomienie
 
 Kliknij dwukrotnie **`Kierownica_GT.bat`**. Wymagany jest Python 3 z <https://python.org>, z
 zaznaczoną opcją *Add python.exe to PATH*.
