@@ -1,0 +1,64 @@
+# Buduje firmware kierownicy (ESP32-WROOM-32) i - na gałęzi głównej - publikuje go
+# jako wydanie "fw-<wersja>". Konfigurator pobiera stamtąd plik do aktualizacji.
+# Wersja pochodzi z FW_VERSION w kierownica_gt.ino: żeby wydać nową, podnieś ją.
+name: Firmware
+
+on:
+  push:
+    paths:
+      - "esp32/**"
+      - ".github/workflows/firmware.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Rdzeń ESP32 i biblioteki
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@3.0.7
+          arduino-cli lib install "Adafruit NeoPixel@1.12.3"
+
+      - name: Kompilacja (ESP32 Dev Module)
+        run: |
+          arduino-cli compile --fqbn esp32:esp32:esp32 --warnings default \
+            --output-dir build esp32/kierownica_gt
+          ls -la build
+
+      - name: Wersja i plik
+        id: fw
+        run: |
+          VER=$(grep -oP 'FW_VERSION\s*=\s*"\K[^"]+' esp32/kierownica_gt/kierownica_gt.ino)
+          test -n "$VER"
+          test -f build/kierownica_gt.ino.merged.bin
+          cp build/kierownica_gt.ino.merged.bin "kierownica_gt-$VER-merged.bin"
+          echo "wersja=$VER" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ steps.fw.outputs.wersja }}
+          path: kierownica_gt-*-merged.bin
+
+      - name: Wydanie (tylko gałąź główna)
+        if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="fw-${{ steps.fw.outputs.wersja }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Wydanie $TAG już istnieje - podnieś FW_VERSION, żeby wydać nowe."
+            exit 0
+          fi
+          gh release create "$TAG" kierownica_gt-*-merged.bin \
+            --title "Firmware ${{ steps.fw.outputs.wersja }}" \
+            --notes "Firmware kierownicy (ESP32-WROOM-32). Wgrywa go konfigurator: Połączenie → Aktualizacja firmware."

@@ -34,9 +34,10 @@ const STANY = [
   { k: 'pit_limiter', t: 'Pit limiter', d: 'Ogranicznik prędkości w alei serwisowej.', ico: 'i-pit', opcja: 'wzor' },
   { k: 'flaga_zolta', t: 'Flaga żółta', d: 'Zagrożenie na torze – zwolnij.', ico: 'i-flag', kl: 'c-yellow', opcja: 'flagi' },
   { k: 'flaga_niebieska', t: 'Flaga niebieska', d: 'Szybszy kierowca chce cię wyprzedzić.', ico: 'i-flag', kl: 'c-blue', opcja: 'flagi' },
+  { k: 'spotter', t: 'Spotter', d: 'Auto obok ciebie – skrajne diody po jego stronie. ACC i Le Mans Ultimate.', ico: 'i-spotter', opcja: 'spotter' },
   { k: 'brak_gry', t: 'Gra wyłączona', d: 'Gdy gra nie działa albo jest w menu.', ico: 'i-moon', opcja: 'tryb' },
 ];
-const SIM_STANU = { zmiana_biegu: 'jazda', pit_limiter: 'pit', flaga_zolta: 'zolta', flaga_niebieska: 'niebieska', brak_gry: 'brak_gry' };
+const SIM_STANU = { spotter: 'spotter', zmiana_biegu: 'jazda', pit_limiter: 'pit', flaga_zolta: 'zolta', flaga_niebieska: 'niebieska', brak_gry: 'brak_gry' };
 const KROTKO_PIT = { caly: 'Cały pasek', naprzemiennie: 'Co druga', polowki: 'Połówki' };
 const KROTKO_TRYB = { wylaczone: 'Zgaszone', staly: 'Stały', oddech: 'Oddech', skaner: 'Skaner' };
 const NAZWY_SIM = { gra: 'Gra na żywo', jazda: 'Jazda', pit: 'Pit limiter', zolta: 'Flaga żółta', niebieska: 'Flaga niebieska', brak_gry: 'Gra wyłączona' };
@@ -171,6 +172,7 @@ function renderStatus() {
   $('#wheelWrap').classList.toggle('off', !polaczono);
   renderEkran();
   if (S.przyp.wl) renderPrzypisywanie();
+  renderFw();
   if (!polaczono) {
     const ikona = $('#ovIcon');
     const tytuly = {
@@ -588,6 +590,10 @@ function budujStany() {
       opcja = `<div class="st-row"><span>Obszar</span><span class="mini-stepper">
         <span class="stepper"><button class="step" data-step="-1" aria-label="Mniej">−</button><input type="number" data-bind="stany.flagi_diody_skrajne" data-type="int" min="0" max="${o.max_diod / 2}" aria-label="Diody skrajne"><button class="step" data-step="1" aria-label="Więcej">+</button></span>
         <span data-out="flagi"></span></span></div>`;
+    } else if (st.opcja === 'spotter') {
+      opcja = `<div class="st-row stack"><span>Diody z każdej strony</span><span class="mini-stepper">
+        <span class="stepper"><button class="step" data-step="-1" aria-label="Mniej">−</button><input type="number" data-bind="${p}.diody" data-type="int" min="1" max="${o.max_diod / 2}" aria-label="Diody spottera"><button class="step" data-step="1" aria-label="Więcej">+</button></span></span></div>
+        <label class="st-swap" title="Włącz, jeśli w grze auto z lewej zapala diody po prawej stronie"><span class="switch"><input type="checkbox" data-bind="${p}.zamien_strony" data-type="bool" aria-label="Zamień strony spottera"><span class="slider"></span></span><span>Zamień lewą i prawą stronę</span></label>`;
     } else if (st.opcja === 'tryb') {
       opcja = `<div class="st-row stack"><span>Efekt</span><div class="seg st-seg" data-bind="${p}.tryb">${Object.keys(o.tryby).map((k) =>
         `<button data-v="${k}" title="${esc(o.tryby[k])}">${KROTKO_TRYB[k] || esc(o.tryby[k])}</button>`).join('')}</div></div>`;
@@ -940,6 +946,17 @@ function renderGra(g) {
   const fl = $('#giFlag');
   ustawTekst('giFlag', zJazdy ? ({ zolta: 'żółta', niebieska: 'niebieska' }[g.flaga] || 'brak') : '—');
   fl.className = zJazdy && g.flaga ? g.flaga : '';
+  const sp = $('#giSpot');
+  let spTxt = '—', spKl = '';
+  if (zJazdy && !g.spotter) { spTxt = 'brak w tej grze'; spKl = 'brak'; }
+  else if (zJazdy) {
+    let l = g.auto_lewo, p = g.auto_prawo;
+    if (S.u && S.u.stany.spotter.zamien_strony) [l, p] = [p, l];
+    spTxt = l && p ? '◀ obie ▶' : l ? '◀ z lewej' : p ? 'z prawej ▶' : 'wolne';
+    spKl = l || p ? 'spot' : '';
+  }
+  ustawTekst('giSpot', spTxt);
+  sp.className = spKl;
   $('#giUse').hidden = !(g.aktywna && S.sim.stan !== 'gra');
 }
 
@@ -992,6 +1009,91 @@ function renderProfile() {
   }).join('');
 }
 
+/* ===================================================== AKTUALIZACJA FIRMWARE */
+const wersjaT = (v) => (String(v || '').match(/\d+/g) || []).slice(0, 4).map(Number);
+function nowszaWersja(a, b) {
+  const x = wersjaT(a), y = wersjaT(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] || 0) - (y[i] || 0);
+    if (d) return d > 0;
+  }
+  return false;
+}
+const FW_TRWA = ['pobieranie', 'wgrywanie', 'restart'];
+
+function renderFw() {
+  const fw = S.fw || { stan: 'bezczynny' };
+  const pol = S.status && S.status.stan === 'polaczono' && S.status.info;
+  const obecna = pol ? S.status.info.wersja : null;
+  const naj = S.fwNajnowsza;
+  const trwa = FW_TRWA.includes(fw.stan);
+  const jestNowsza = !!(pol && naj && nowszaWersja(naj.wersja, obecna));
+
+  $('#fwBanner').hidden = !jestNowsza || trwa || fw.stan === 'gotowe';
+  ustawTekst('fwbNew', naj ? naj.wersja : '');
+  ustawTekst('fwbOld', obecna || '');
+  $('#fwBadge').hidden = !jestNowsza;
+  $('#connPill').classList.toggle('fw-new', jestNowsza);
+
+  ustawTekst('fwCurrent', obecna || (trwa ? '…' : '—'));
+  const latest = $('#fwLatest');
+  ustawTekst('fwLatest', naj ? naj.wersja : '—');
+  latest.className = jestNowsza ? 'nowa' : '';
+  ustawTekst('fwLatestNote', S.fwSprawdzam ? 'sprawdzam…' : S.fwBlad ? S.fwBlad
+    : naj ? `wydana ${naj.data}` : 'brak wydań na GitHubie');
+
+  const prog = $('#fwProgress');
+  prog.hidden = fw.stan === 'bezczynny';
+  prog.className = 'fw-progress ' + fw.stan;
+  ustawTekst('fwStage', fw.tekst || '');
+  ustawTekst('fwPct', trwa && fw.procent != null ? `${fw.procent}%` : '');
+  $('#fwBar').style.width = `${fw.stan === 'gotowe' || fw.stan === 'blad' ? 100 : fw.procent || 0}%`;
+  const logEl = $('#fwLog');
+  const logTxt = (fw.log || []).join('\n');
+  if (logEl.textContent !== logTxt) { logEl.textContent = logTxt; logEl.scrollTop = logEl.scrollHeight; }
+  if (fw.stan === 'blad') $('.fw-details').open = true;
+
+  const go = $('#fwGo');
+  go.disabled = trwa || !pol || !naj;
+  ustawTekst('fwGoText', trwa ? 'Trwa aktualizacja…' : !naj ? 'Aktualizuj' : jestNowsza ? `Aktualizuj do ${naj.wersja}` : `Wgraj ponownie ${naj.wersja}`);
+  go.className = 'btn ' + (jestNowsza ? 'primary' : '');
+  go.title = !pol ? 'Najpierw podłącz kierownicę' : '';
+  $('#fwFromFile').disabled = trwa || !pol;
+  $('#fwCheck').disabled = trwa || S.fwSprawdzam;
+  $('#fwClose').disabled = trwa;
+}
+
+async function sprawdzFw() {
+  S.fwSprawdzam = true; renderFw();
+  const d = await api('/api/fw/sprawdz');
+  S.fwSprawdzam = false;
+  if (d) { S.fwNajnowsza = d.najnowsza; S.fwBlad = d.blad; }
+  renderFw();
+}
+
+function otworzFw() {
+  zamknijPopover();
+  renderFw();
+  $('#dlgFw').showModal();
+  if (!S.fwNajnowsza && !S.fwSprawdzam) sprawdzFw();
+}
+
+async function wgrajPlikFw(plik) {
+  if (!plik) return;
+  if (plik.size > 8 * 1024 * 1024) { toast('Plik jest za duży jak na firmware.', 'err'); return; }
+  try {
+    const r = await fetch('/api/fw/plik', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', 'X-Nazwa-Pliku': encodeURIComponent(plik.name) },
+      body: plik,
+    });
+    const d = await r.json().catch(() => ({ ok: false, blad: `Błąd ${r.status}` }));
+    if (!d.ok) toast(d.blad || 'Nie udało się wgrać pliku.', 'err', 6000);
+  } catch {
+    toast('Brak połączenia z programem konfiguratora.', 'err');
+  }
+}
+
 /* ============================================================ ZDARZENIA */
 function przyjmijUstawienia(m) {
   S.u = m.ustawienia;
@@ -1022,6 +1124,8 @@ function obsluz(m) {
       } else {
         ustawStatus(st);
       }
+      S.fw = m.fw; S.fwNajnowsza = m.fw_najnowsza; S.fwBlad = m.fw_blad;
+      renderFw();
       if (m.blad) toast(`${m.blad} Wczytano ustawienia domyślne.`, 'err', 7000);
       break;
     }
@@ -1030,9 +1134,19 @@ function obsluz(m) {
     case 'stan': stanPrzyciskow(m.bity); break;
     case 'piny':
       S.piny = m.piny;
-      S.btns.forEach((b) => { if (m.piny[b.n]) { b.pin = m.piny[b.n]; renderPrzycisk(b); } });
+      S.btns.forEach((b) => { if (m.piny[b.n]) { b.pin = m.piny[b.n]; renderWiersz(b); } });
+      renderKolo();
       break;
     case 'klatka': naKlatke(m); break;
+    case 'fw': {
+      const bylo = S.fw ? S.fw.stan : null;
+      S.fw = m.fw;
+      renderFw();
+      if (m.fw.stan !== bylo && m.fw.stan === 'gotowe') toast(m.fw.tekst, 'ok', 6000);
+      if (m.fw.stan !== bylo && m.fw.stan === 'blad') toast('Aktualizacja nie powiodła się.', 'err', 5000);
+      break;
+    }
+    case 'fw_najnowsza': S.fwNajnowsza = m.najnowsza; S.fwBlad = m.blad; renderFw(); break;
     case 'uklad':
       S.uklad = m.uklad ? { ...m.uklad } : { ...UKLAD_DOMYSLNY };
       renderPrzypisywanie();
@@ -1080,6 +1194,23 @@ function podepnij() {
     $('#log').innerHTML = '<li class="log-empty">Tu pojawi się każde wciśnięcie.</li>';
     toast('Test zaczęty od nowa.', 'info');
   });
+  // aktualizacja firmware
+  $('#btnFw').addEventListener('click', otworzFw);
+  $('#fwbOpen').addEventListener('click', otworzFw);
+  $('#fwClose').addEventListener('click', () => $('#dlgFw').close());
+  $('#dlgFw').addEventListener('cancel', (e) => { if (S.fw && FW_TRWA.includes(S.fw.stan)) e.preventDefault(); });
+  $('#fwCheck').addEventListener('click', sprawdzFw);
+  $('#fwGo').addEventListener('click', async () => {
+    const naj = S.fwNajnowsza;
+    if (!naj) return;
+    const obecna = S.status && S.status.info ? S.status.info.wersja : '?';
+    if (!nowszaWersja(naj.wersja, obecna)
+        && !(await potwierdz('Wgrać ponownie?', `W kierownicy jest już wersja ${obecna}. Wgrać ją jeszcze raz?`, 'Wgraj'))) return;
+    await api('/api/fw/aktualizuj');
+  });
+  $('#fwFromFile').addEventListener('click', () => $('#fwFile').click());
+  $('#fwFile').addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; wgrajPlikFw(f); });
+
   // przypisywanie przycisków do miejsc na rysunku
   $('#btnAssign').addEventListener('click', () => przelaczPrzypisywanie(!S.przyp.wl));
   $('#abDone').addEventListener('click', () => { przelaczPrzypisywanie(false); toast('Zapisano układ przycisków.'); });
@@ -1352,7 +1483,7 @@ function podepnij() {
   });
 
   window.addEventListener('beforeunload', (e) => {
-    if (S.niezapisane) { e.preventDefault(); e.returnValue = ''; }
+    if (S.niezapisane || (S.fw && FW_TRWA.includes(S.fw.stan))) { e.preventDefault(); e.returnValue = ''; }
   });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && klatka) naKlatke(klatka); });
 }

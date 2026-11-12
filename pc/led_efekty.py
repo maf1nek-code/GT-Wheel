@@ -63,6 +63,9 @@ USTAWIENIA_DOMYSLNE: dict = {
         "flaga_niebieska": {"wlaczony": True, "kolor": "#0060FF", "miganie_hz": 3.0},
         "flagi_diody_skrajne": 2,  # ile diod z kazdej strony pokazuje flage (0 = caly pasek)
         "brak_gry": {"tryb": "oddech", "kolor": "#0030FF"},
+        # auto obok: skrajne diody po jego stronie
+        "spotter": {"wlaczony": True, "kolor": "#FF7A00", "miganie_hz": 0.0, "diody": 2,
+                    "zamien_strony": False},
     },
 }
 
@@ -73,6 +76,8 @@ class Telemetria:
     gra_aktywna: bool = True
     pit_limiter: bool = False
     flaga: str | None = None       # None, "zolta" albo "niebieska"
+    auto_lewo: bool = False        # spotter: auto obok z lewej
+    auto_prawo: bool = False       # spotter: auto obok z prawej
 
 
 # ============================== kolory =====================================
@@ -231,7 +236,7 @@ def popraw_ustawienia(u: dict) -> dict:
         o["pelne"] = o["start"]
 
     s = u["stany"]
-    for nazwa in ("zmiana_biegu", "pit_limiter", "flaga_zolta", "flaga_niebieska"):
+    for nazwa in ("zmiana_biegu", "pit_limiter", "flaga_zolta", "flaga_niebieska", "spotter"):
         st, ds = s[nazwa], d["stany"][nazwa]
         st["wlaczony"] = bool(st["wlaczony"])
         st["kolor"] = _kolor_lub(st["kolor"], ds["kolor"])
@@ -244,6 +249,9 @@ def popraw_ustawienia(u: dict) -> dict:
                                              d["stany"]["flagi_diody_skrajne"]))
     s["brak_gry"]["tryb"] = _wybor(s["brak_gry"]["tryb"], TRYBY_BEZCZYNNOSCI,
                                    d["stany"]["brak_gry"]["tryb"])
+    sp = s["spotter"]
+    sp["diody"] = int(_ogranicz(sp["diody"], 1, MAX_DIOD // 2, d["stany"]["spotter"]["diody"]))
+    sp["zamien_strony"] = bool(sp["zamien_strony"])
     s["brak_gry"]["kolor"] = _kolor_lub(s["brak_gry"]["kolor"], d["stany"]["brak_gry"]["kolor"])
     return u
 
@@ -346,6 +354,21 @@ def klatka(u: dict, tel: Telemetria, t: float) -> list[Kolor]:
             wynik = [kolor] * n
         else:
             for i in list(range(skrajne)) + list(range(n - skrajne, n)):
+                wynik[i] = kolor
+
+    # spotter na samym wierzchu - auto obok jest wazniejsze niz obroty i flagi
+    sp = s["spotter"]
+    if sp["wlaczony"] and (tel.auto_lewo or tel.auto_prawo):
+        lewo, prawo = tel.auto_lewo, tel.auto_prawo
+        if sp["zamien_strony"]:
+            lewo, prawo = prawo, lewo
+        kolor = hex_na_kolor(sp["kolor"]) if _miga(t, sp["miganie_hz"]) else CZARNY
+        k = max(1, min(sp["diody"], n // 2))
+        if lewo:
+            for i in range(k):
+                wynik[i] = kolor
+        if prawo:
+            for i in range(n - k, n):
                 wynik[i] = kolor
     return wynik
 
