@@ -156,6 +156,7 @@
 
       <div class="hero-controls">
         <div class="seg sim-seg" id="simState" role="radiogroup" aria-label="Stan symulacji">
+          <button data-v="gra" role="radio" class="seg-live"><span class="live-dot"></span>Gra na żywo</button>
           <button data-v="jazda" role="radio"><svg><use href="#i-gear"/></svg>Jazda</button>
           <button data-v="pit" role="radio"><svg><use href="#i-pit"/></svg>Pit limiter</button>
           <button data-v="zolta" role="radio"><svg class="c-yellow"><use href="#i-flag"/></svg>Flaga żółta</button>
@@ -169,6 +170,20 @@
             <input type="range" id="simRpm" min="0" max="100" step="0.5" value="80" aria-label="Obroty silnika">
           </div>
           <div class="rpm-val"><b id="rpmVal">80</b><span>% obrotów</span></div>
+        </div>
+      </div>
+
+      <div class="game-info" id="gameInfo" data-stan="brak">
+        <div class="gi-head">
+          <span class="gi-dot"></span>
+          <div class="gi-text"><b id="giTitle">Telemetria z gry</b><span id="giText">Uruchamianie…</span></div>
+          <button class="btn sm" id="giUse" hidden><span class="live-dot"></span>Pokaż grę na żywo</button>
+        </div>
+        <div class="gi-stats">
+          <div><small>Obroty</small><b id="giRpm">—</b></div>
+          <div><small>Bieg</small><b id="giGear">—</b></div>
+          <div><small>Pit limiter</small><b id="giPit">—</b></div>
+          <div><small>Flaga</small><b id="giFlag">—</b></div>
         </div>
       </div>
     </div>
