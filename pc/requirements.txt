@@ -2,3 +2,5 @@ pyserial>=3.5
 vgamepad>=0.1.0 ; sys_platform == "win32"
 pyvjoy>=1.0.1 ; sys_platform == "win32"
 esptool>=4.7,<5
+pystray>=0.19 ; sys_platform == "win32"
+Pillow>=10 ; sys_platform == "win32"

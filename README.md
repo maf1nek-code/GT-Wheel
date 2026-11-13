@@ -112,12 +112,27 @@ Domyślny tryb `auto` używa vJoy, a gdy go nie ma, pada Xbox.
 
 ## 3. Konfigurator (test przycisków i diody LED)
 
-Kliknij dwukrotnie **`Konfigurator_GT.bat`**. Otworzy się osobne okno konfiguratora (w Microsoft
-Edge w trybie aplikacji, bez pasków przeglądarki – Edge jest w każdym Windows 10/11).
-Okno samo znajdzie kierownicę. Zamknięcie okna kończy program.
+Kliknij dwukrotnie **`Konfigurator_GT.bat`**. Otworzy się okno konfiguratora (Microsoft Edge
+w trybie aplikacji, bez pasków przeglądarki – Edge jest w każdym Windows 10/11), a przy zegarze
+pojawi się **ikona Kierownica GT**.
 
-Port COM może mieć otwarty tylko jeden program, więc najpierw zamknij `Kierownica_GT.bat`
-i Serial Monitor. Status połączenia i wybór portu są w prawym górnym rogu.
+**Program działa w tle.** Po zamknięciu okna zostaje przy zegarze: trzyma połączenie z kierownicą,
+przekazuje przyciski do gier (vJoy / pad Xbox) i steruje diodami z telemetrii. Okno otwierasz
+z powrotem dwuklikiem ikony (albo jeszcze raz `Konfigurator_GT.bat`), a program kończysz z menu ikony
+(prawy przycisk → **Zakończ**). Kropka na ikonie: zielona – kierownica połączona, pomarańczowa –
+szukanie, czerwona – port zajęty. Dzięki temu `Kierownica_GT.bat` nie jest już potrzebny.
+
+**Ustawienia** (zakładka w oknie):
+
+- **Uruchamiaj z systemem Windows** – po włączeniu komputera program startuje w tle, bez okna,
+  tylko z ikoną przy zegarze. Wpis trafia do autostartu bieżącego użytkownika (bez uprawnień
+  administratora); wyłączenie przełącznika go usuwa.
+- **Otwieraj okno przy autostarcie**, **Po zamknięciu okna**: działaj w tle albo zakończ program.
+- **Kontroler w grach**: automatycznie / vJoy (z numerem urządzenia) / pad Xbox 360 / wyłączony.
+- **Steruj diodami w czasie gry**, **Powiadomienia przy zegarze** (podłączenie kierownicy, nowy firmware).
+- O programie: wersja, folder, aktualizacja firmware, zakończenie programu.
+
+Komunikaty programu działającego w tle zapisują się w `pc/kierownica_gt.log`.
 
 **Test przycisków**: rysunek tej kierownicy (karbonowa płyta, pasek 16 diod, ekran, 10 kolorowych
 przycisków i 3 pokrętła). Wciśnięty przycisk świeci, sprawdzony dostaje ✓, a ekran na rysunku pokazuje
@@ -163,9 +178,11 @@ według ustawień z konfiguratora (`pc/leds.json`):
   strony wyjdą odwrotnie, w karcie „Spotter” włącz „Zamień lewą i prawą stronę”,
 - menu, pauza, powtórka albo brak gry → efekt „Gra wyłączona”.
 
-Zmiany zapisane w konfiguratorze są wczytywane w trakcie jazdy, bez restartu. Konfigurator i
-`Kierownica_GT.bat` nie mogą działać jednocześnie (jeden port COM), więc ustaw diody, zamknij
-konfigurator, potem uruchom grę z `Kierownica_GT.bat`. Opcja `--bez-diod` wyłącza sterowanie paskiem.
+Wystarczy, że program działa przy zegarze (np. z autostartem) – w czasie gry okno może być zamknięte.
+Gdy okno jest otwarte, pasek pokazuje podgląd z konfiguratora (tryb **Gra na żywo** pokazuje grę).
+
+Stary sposób też działa: `Kierownica_GT.bat` (okno konsoli, opcja `--bez-diod`), ale **nie uruchamiaj
+go razem z konfiguratorem** – oba używają tego samego portu COM.
 
 | Gra | Skąd dane | Co trzeba zrobić |
 |---|---|---|
