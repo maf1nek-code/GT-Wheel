@@ -156,7 +156,9 @@ class Aplikacja:
         self.profil: str | None = None
 
         # symulacja w podgladzie
-        self.sim = {"stan": "jazda", "obroty": 0.8, "auto": True, "wysylaj": True}
+        # domyslnie "gra": pasek pokazuje gre (albo oczekiwanie na nia), a nie petle symulacji
+        self.sim = {"stan": "gra", "obroty": 0.0, "auto": True, "wysylaj": True}
+        self._start_animacji: float | None = None   # animacja startowa (po podlaczeniu kierownicy)
         self._t0 = time.monotonic()
         self.czytnik = telemetria.Czytnik()
         self.gra = telemetria.Stan()
@@ -566,6 +568,7 @@ class Aplikacja:
                 self.piny = {}
                 self.bity = ""
                 self._ostatnia_linia = ""
+            self._start_animacji = time.monotonic()   # powitanie: animacja startowa na pasku
             self._ustaw_status("polaczono", f"Połączono ({nazwa})", port=nazwa)
             log(f"Polaczono z kierownica na porcie {nazwa} (firmware {info.version}, "
                 f"{info.n_buttons} przyciskow, LED: {info.max_leds or 'brak'}).")
@@ -669,6 +672,14 @@ class Aplikacja:
             else:
                 nastepna = time.monotonic()
 
+    def _animacja(self, u: dict) -> list | None:
+        if self._start_animacji is None:
+            return None
+        klatka = fx.animacja_startu(u, time.monotonic() - self._start_animacji)
+        if klatka is None:
+            self._start_animacji = None
+        return klatka
+
     def _klatka(self) -> None:
         t = time.monotonic() - self._t0
         self.gra = self.czytnik.odczyt()
@@ -676,8 +687,9 @@ class Aplikacja:
             # okno zamkniete - program w tle: diody pokazuja gre (jak w czasie jazdy)
             with self.lock:
                 u = fx.popraw_ustawienia(self.u)
-            self._na_pasek(fx.klatka(u, self.gra.telemetria(), t), u,
-                           {"wysylaj": self.prog["diody_w_grze"]})
+            powitanie = self._animacja(u)
+            self._na_pasek(powitanie or fx.klatka(u, self.gra.telemetria(), t), u,
+                           {"wysylaj": self.prog["diody_w_grze"] or powitanie is not None})
             return
         with self.lock:
             u = fx.popraw_ustawienia(self.u)
@@ -691,7 +703,7 @@ class Aplikacja:
 
         tel = self.gra.telemetria() if sim["stan"] == "gra" else \
             self._telemetria(sim["stan"], sim["obroty"], t)
-        glowna = fx.klatka(u, tel, t)
+        glowna = self._animacja(u) or fx.klatka(u, tel, t)
         mini = {
             "zmiana_biegu": fx.klatka(u, self._telemetria("jazda", 1.0), t),
             "pit_limiter": fx.klatka(u, self._telemetria("pit", 0.5), t),
@@ -932,6 +944,8 @@ def stworz_obsluge(app: Aplikacja, port_http: list):
                     if "obroty" in d:
                         app.sim["obroty"] = min(1.0, max(0.0, float(d["obroty"])))
                         app.sim["auto"] = False
+                    if d.get("animacja"):
+                        app._start_animacji = time.monotonic()
                     for klucz in ("auto", "wysylaj"):
                         if klucz in d:
                             app.sim[klucz] = bool(d[klucz])

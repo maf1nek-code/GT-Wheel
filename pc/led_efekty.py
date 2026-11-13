@@ -39,6 +39,7 @@ WZORY_PIT = {
 }
 
 TRYBY_BEZCZYNNOSCI = {
+    "oczekiwanie": "oczekiwanie (środkowe diody przygaszone)",
     "wylaczone": "diody zgaszone",
     "staly": "stały kolor",
     "oddech": "oddech (powolne pulsowanie)",
@@ -48,6 +49,7 @@ TRYBY_BEZCZYNNOSCI = {
 USTAWIENIA_DOMYSLNE: dict = {
     "wersja": 1,
     "liczba_diod": 16,
+    "animacja_startu": "fala",   # raz po podlaczeniu kierownicy: "fala" / "tecza" / "wylaczona"
     "jasnosc": 40,
     "kierunek": "lewo_prawo",
     "kolory": [],  # uzupelniane presetem "klasyczny"
@@ -62,7 +64,7 @@ USTAWIENIA_DOMYSLNE: dict = {
         "flaga_zolta": {"wlaczony": True, "kolor": "#FFC000", "miganie_hz": 3.0},
         "flaga_niebieska": {"wlaczony": True, "kolor": "#0060FF", "miganie_hz": 3.0},
         "flagi_diody_skrajne": 2,  # ile diod z kazdej strony pokazuje flage (0 = caly pasek)
-        "brak_gry": {"tryb": "oddech", "kolor": "#0030FF"},
+        "brak_gry": {"tryb": "oczekiwanie", "kolor": "#0030FF"},
         # auto obok: skrajne diody po jego stronie
         "spotter": {"wlaczony": True, "kolor": "#FF7A00", "miganie_hz": 0.0, "diody": 2,
                     "zamien_strony": False},
@@ -219,6 +221,7 @@ def popraw_ustawienia(u: dict) -> dict:
     u["liczba_diod"] = int(_ogranicz(u["liczba_diod"], 1, MAX_DIOD, d["liczba_diod"]))
     u["jasnosc"] = int(_ogranicz(u["jasnosc"], 0, 100, d["jasnosc"]))
     u["kierunek"] = _wybor(u["kierunek"], KIERUNKI, d["kierunek"])
+    u["animacja_startu"] = _wybor(u["animacja_startu"], ANIMACJE_STARTU, d["animacja_startu"])
 
     n = u["liczba_diod"]
     kolory = u["kolory"] if isinstance(u["kolory"], list) else []
@@ -307,6 +310,10 @@ def _bezczynnosc(u: dict, t: float) -> list[Kolor]:
     st = u["stany"]["brak_gry"]
     kolor = hex_na_kolor(st["kolor"])
     tryb = st["tryb"]
+    if tryb == "oczekiwanie":           # spokojnie, bez ruchu: 1-2 srodkowe diody przygaszone
+        srodek = {n // 2} if n % 2 else {n // 2 - 1, n // 2}
+        przygaszony = przyciemnij(kolor, 0.35)
+        return [przygaszony if i in srodek else CZARNY for i in range(n)]
     if tryb == "staly":
         return [kolor] * n
     if tryb == "oddech":
@@ -370,6 +377,52 @@ def klatka(u: dict, tel: Telemetria, t: float) -> list[Kolor]:
         if prawo:
             for i in range(n - k, n):
                 wynik[i] = kolor
+    return wynik
+
+
+# ===================================================== animacja startowa
+ANIMACJE_STARTU = {
+    "fala": "biała fala od brzegów, potem kolory obrotów",
+    "tecza": "tęcza przesuwająca się po pasku",
+    "wylaczona": "bez animacji",
+}
+CZAS_ANIMACJI_S = 2.6
+BIALY: Kolor = (255, 255, 255)
+
+
+def _gladko(x: float) -> float:
+    x = min(1.0, max(0.0, x))
+    return x * x * (3 - 2 * x)
+
+
+def _hsv(h: float) -> Kolor:
+    h = (h % 1.0) * 6
+    i, f = int(h), h - int(h)
+    k = [(1, f, 0), (1 - f, 1, 0), (0, 1, f), (0, 1 - f, 1), (f, 0, 1), (1, 0, 1 - f)][i % 6]
+    return tuple(round(255 * c) for c in k)  # type: ignore[return-value]
+
+
+def animacja_startu(u: dict, t: float) -> list[Kolor] | None:
+    """Klatka animacji startowej w chwili t od jej poczatku albo None, gdy sie skonczyla."""
+    styl = u.get("animacja_startu", "fala")
+    if styl == "wylaczona" or t < 0 or t >= CZAS_ANIMACJI_S:
+        return None
+    n = u["liczba_diod"]
+    if styl == "tecza":
+        jasnosc = _gladko(t / 0.4) * (1 - _gladko((t - 1.9) / 0.7))
+        return [przyciemnij(_hsv(i / max(n, 1) * 0.9 - t * 0.55), jasnosc) for i in range(n)]
+
+    # "fala": biale diody zapalaja sie od brzegow do srodka, potem przechodza w kolory
+    # obrotow (te z ustawien), chwila pelnego paska i wygaszenie
+    kroki = kroki_diod(n, "do_srodka")
+    ile = max(kroki) + 1
+    kolory = [hex_na_kolor(k) for k in u["kolory"]]
+    wynik = []
+    for i, krok in enumerate(kroki):
+        zapal = _gladko((t - 0.75 * krok / ile) / 0.18)          # 0..0,9 s - fala
+        w_kolor = _gladko((t - 0.95 - 0.25 * krok / ile) / 0.35)  # 0,95..1,55 s - kolory
+        zgas = 1 - _gladko((t - 1.9) / 0.7)                       # 1,9..2,6 s - wygaszanie
+        wynik.append(przyciemnij(mieszaj(BIALY, kolory[i], w_kolor), zapal * zgas))
     return wynik
 
 

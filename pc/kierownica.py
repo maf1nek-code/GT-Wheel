@@ -345,7 +345,8 @@ class DiodyZGry(threading.Thread):
             if komunikat != opis:
                 opis = komunikat
                 log(f"Diody: {opis}")
-            kolory = fx.klatka(u, stan.telemetria(), teraz - t0)[:self.max_leds]
+            powitanie = fx.animacja_startu(u, teraz - t0)   # raz, zaraz po podlaczeniu
+            kolory = (powitanie or fx.klatka(u, stan.telemetria(), teraz - t0))[:self.max_leds]
             linia = fx.komenda_leds(fx.z_jasnoscia(kolory, u["jasnosc"]))
             # ~70% przepustowosci 115200 bodow; to samo co poprzednio - tylko raz na sekunde
             if teraz - wyslano >= max(1.0 / self.FPS, len(linia) / 8000.0) and \
