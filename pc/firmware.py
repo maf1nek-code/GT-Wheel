@@ -75,7 +75,9 @@ def sprawdz_github(limit_s: float = 8.0) -> dict | None:
         kandydat = {
             "wersja": tag[3:],
             "nazwa": plik["name"],
-            "url": plik["browser_download_url"],
+            # adres przez API (z Accept: application/octet-stream) - dziala tez tam,
+            # gdzie bezposrednie linki github.com/.../releases/download sa blokowane
+            "url": plik.get("url") or plik["browser_download_url"],
             "rozmiar": plik.get("size", 0),
             "data": str(w.get("published_at", ""))[:10],
             "strona": w.get("html_url", ""),

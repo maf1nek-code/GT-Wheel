@@ -33,6 +33,7 @@
   <symbol id="i-pit" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><text x="12" y="15.6" text-anchor="middle" font-size="8.5" font-weight="800" fill="currentColor" font-family="Segoe UI, sans-serif">PIT</text></symbol>
   <symbol id="i-flag" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M5 21V4"/><path fill="currentColor" d="M6 4.5h12.5l-2.8 4.3 2.8 4.2H6Z"/></symbol>
   <symbol id="i-spotter" viewBox="0 0 24 24"><rect x="8.5" y="3.5" width="7" height="17" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4.5 9 2 12l2.5 3M19.5 9 22 12l-2.5 3"/></symbol>
+  <symbol id="i-cog" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M10.3 3h3.4l.5 2.6 1.9.8 2.2-1.5 2.4 2.4-1.5 2.2.8 1.9 2.6.5v3.4l-2.6.5-.8 1.9 1.5 2.2-2.4 2.4-2.2-1.5-1.9.8-.5 2.6h-3.4l-.5-2.6-1.9-.8-2.2 1.5-2.4-2.4 1.5-2.2-.8-1.9L3 13.7v-3.4l2.6-.5.8-1.9-1.5-2.2 2.4-2.4 2.2 1.5 1.9-.8L10.3 3Z"/><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M20 14.6A8.5 8.5 0 0 1 9.4 4a8.5 8.5 0 1 0 10.6 10.6Z"/></symbol>
 </svg>
 
@@ -48,6 +49,9 @@
     </button>
     <button class="tab-btn" role="tab" id="tabbtn-ledy" data-tab="ledy" aria-selected="false" aria-controls="tab-ledy">
       <svg><use href="#i-leds"/></svg>Diody LED<span class="tab-dot" id="tabDot" hidden title="Niezapisane zmiany"></span>
+    </button>
+    <button class="tab-btn" role="tab" id="tabbtn-ustawienia" data-tab="ustawienia" aria-selected="false" aria-controls="tab-ustawienia">
+      <svg><use href="#i-cog"/></svg>Ustawienia
     </button>
   </nav>
 
@@ -303,6 +307,68 @@
         <button class="btn ghost" id="btnProfiles"><svg><use href="#i-folder"/></svg>Profile</button>
         <button class="btn" id="btnRevert" disabled><svg><use href="#i-undo"/></svg>Cofnij zmiany</button>
         <button class="btn primary" id="btnSave" disabled><svg><use href="#i-save"/></svg>Zapisz<kbd>Ctrl+S</kbd></button>
+      </div>
+    </div>
+  </section>
+  <!-- ========================== USTAWIENIA ========================== -->
+  <section class="tab" id="tab-ustawienia" role="tabpanel" aria-labelledby="tabbtn-ustawienia" hidden>
+    <div class="settings">
+      <div class="card">
+        <div class="card-head small"><h3>Uruchamianie</h3></div>
+        <label class="opt">
+          <span class="opt-text"><b>Uruchamiaj z systemem Windows</b><small>Po włączeniu komputera program startuje w tle – bez okna, tylko ikona przy zegarze. Przyciski i diody działają od razu.</small></span>
+          <span class="switch"><input type="checkbox" id="pAutostart"><span class="slider"></span></span>
+        </label>
+        <label class="opt">
+          <span class="opt-text"><b>Otwieraj okno przy autostarcie</b><small>Wyłączone: program czeka cicho przy zegarze, okno otwierasz kliknięciem ikony.</small></span>
+          <span class="switch"><input type="checkbox" data-prog="okno_przy_autostarcie"><span class="slider"></span></span>
+        </label>
+        <div class="opt col">
+          <span class="opt-text"><b>Po zamknięciu okna</b><small>Program przy zegarze trzyma połączenie z kierownicą – przyciski i diody działają w grach.</small></span>
+          <div class="seg" data-prog="po_zamknieciu">
+            <button data-v="tlo">Działaj w tle (przy zegarze)</button>
+            <button data-v="zakoncz">Zakończ program</button>
+          </div>
+        </div>
+        <p class="note warn" id="pBrakTacki" hidden><svg><use href="#i-warn"/></svg><span>Ikona przy zegarze jest niedostępna (brak biblioteki pystray). Uruchom ponownie <b>Konfigurator_GT.bat</b> – doinstaluje ją.</span></p>
+        <p class="note" id="pBrakAutostartu" hidden><svg><use href="#i-warn"/></svg><span>Autostart działa tylko w Windows.</span></p>
+      </div>
+
+      <div class="card">
+        <div class="card-head small"><h3>Kontroler w grach</h3></div>
+        <p class="muted small-text">Jak gra widzi przyciski kierownicy. Działa zawsze, gdy program jest uruchomiony (także w tle).</p>
+        <div class="seg kontroler-seg" data-prog="kontroler" id="pKontroler"></div>
+        <div class="opt" id="pVjoyRow">
+          <span class="opt-text"><b>Urządzenie vJoy</b><small>Numer urządzenia włączonego w „Configure vJoy”.</small></span>
+          <div class="select-wrap narrow"><select id="pVjoy"></select><svg><use href="#i-chevron"/></svg></div>
+        </div>
+        <p class="note" id="pKontrolerStan"></p>
+      </div>
+
+      <div class="card">
+        <div class="card-head small"><h3>Diody i powiadomienia</h3></div>
+        <label class="opt">
+          <span class="opt-text"><b>Steruj diodami w czasie gry</b><small>Gdy okno jest zamknięte, pasek pokazuje obroty, flagi i spottera z gry (Assetto Corsa, ACC, Le Mans Ultimate).</small></span>
+          <span class="switch"><input type="checkbox" data-prog="diody_w_grze"><span class="slider"></span></span>
+        </label>
+        <label class="opt">
+          <span class="opt-text"><b>Powiadomienia przy zegarze</b><small>Podłączenie i odłączenie kierownicy, nowa wersja firmware.</small></span>
+          <span class="switch"><input type="checkbox" data-prog="powiadomienia"><span class="slider"></span></span>
+        </label>
+      </div>
+
+      <div class="card">
+        <div class="card-head small"><h3>O programie</h3></div>
+        <dl class="about">
+          <dt>Wersja programu</dt><dd id="pWersja">—</dd>
+          <dt>Firmware w kierownicy</dt><dd id="pFirmware">—</dd>
+          <dt>Folder programu</dt><dd id="pFolder" class="mono">—</dd>
+        </dl>
+        <div class="about-actions">
+          <button class="btn sm" id="pFolderBtn"><svg><use href="#i-folder"/></svg>Otwórz folder</button>
+          <button class="btn sm" id="pFwBtn"><svg><use href="#i-upload"/></svg>Aktualizacja firmware</button>
+          <button class="btn ghost sm danger" id="pZakoncz"><svg><use href="#i-x"/></svg>Zakończ program</button>
+        </div>
       </div>
     </div>
   </section>
