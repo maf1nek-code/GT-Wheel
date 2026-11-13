@@ -39,7 +39,7 @@ const STANY = [
 ];
 const SIM_STANU = { spotter: 'spotter', zmiana_biegu: 'jazda', pit_limiter: 'pit', flaga_zolta: 'zolta', flaga_niebieska: 'niebieska', brak_gry: 'brak_gry' };
 const KROTKO_PIT = { caly: 'Cały pasek', naprzemiennie: 'Co druga', polowki: 'Połówki' };
-const KROTKO_TRYB = { wylaczone: 'Zgaszone', staly: 'Stały', oddech: 'Oddech', skaner: 'Skaner' };
+const KROTKO_TRYB = { oczekiwanie: 'Czekanie', wylaczone: 'Zgaszone', staly: 'Stały', oddech: 'Oddech', skaner: 'Skaner' };
 const NAZWY_SIM = { gra: 'Gra na żywo', jazda: 'Jazda', pit: 'Pit limiter', zolta: 'Flaga żółta', niebieska: 'Flaga niebieska', brak_gry: 'Gra wyłączona' };
 
 /* ------------------------------------------------------------ narzędzia */
@@ -1446,6 +1446,10 @@ function podepnij() {
     if (b) { S.sim.stan = b.dataset.v; renderSim(); wyslijSim({ stan: b.dataset.v }); }
   });
   $('#giUse').addEventListener('click', () => { S.sim.stan = 'gra'; renderSim(); wyslijSim({ stan: 'gra' }); });
+  $('#animPokaz').addEventListener('click', async () => {
+    await dokonczWysylanie();   // najpierw wyslij wybrany styl animacji
+    wyslijSim({ animacja: true });
+  });
   $('#simAuto').addEventListener('click', () => { S.sim.auto = !S.sim.auto; renderSim(); wyslijSim({ auto: S.sim.auto }); });
   $('#simSend').addEventListener('change', (e) => wyslijSim({ wysylaj: e.target.checked }));
   const rpm = $('#simRpm');

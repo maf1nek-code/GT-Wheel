@@ -153,8 +153,9 @@ lewa strona 1–5 i lewe pokrętło 11, prawa strona 6–10 i prawe pokrętło 1
 - kolory: zaznaczasz diody myszką (przeciągnięcie, Shift = zakres, Ctrl = pojedyncze) i wybierasz
   kolor; są gotowe zestawy, własny gradient i odbicie lustrzane,
 - progi obrotów na jednym suwaku z trzema znacznikami (pierwsza dioda, wszystkie, zmiana biegu),
+- animacja startowa (biała fala albo tęcza), odtwarzana raz po podłączeniu kierownicy,
 - stany specjalne z podglądem każdego z nich: zmiana biegu, pit limiter (3 wzory), flaga żółta
-  i niebieska (na skrajnych diodach albo całym pasku), gra wyłączona (zgaszone, stały, oddech, skaner),
+  i niebieska (na skrajnych diodach albo całym pasku), gra wyłączona (oczekiwanie – środkowe diody przygaszone, zgaszone, stały, oddech, skaner),
 - **Zapisz** (Ctrl+S) zapisuje do `pc/leds.json` – z tego pliku będzie korzystał program w czasie gry,
 - **Profile**: osobne zestawy ustawień, np. dla każdej gry (`pc/profile_led/`), plus eksport
   i import do pliku.

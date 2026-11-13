@@ -222,6 +222,17 @@
             </div>
             <div class="note" id="powerNote"></div>
             <div class="row col-row">
+              <div class="label">Animacja startowa <small class="muted">– raz, po podłączeniu kierownicy</small></div>
+              <div class="anim-row">
+                <div class="seg" data-bind="animacja_startu">
+                  <button data-v="fala" title="Biała fala od brzegów, potem kolory obrotów">Biała fala</button>
+                  <button data-v="tecza" title="Tęcza przesuwająca się po pasku">Tęcza</button>
+                  <button data-v="wylaczona" title="Bez animacji">Wyłączona</button>
+                </div>
+                <button class="btn sm" id="animPokaz"><svg><use href="#i-play"/></svg>Pokaż</button>
+              </div>
+            </div>
+            <div class="row col-row">
               <div class="label">Kierunek zapalania</div>
               <div class="dir-grid seg" data-bind="kierunek" id="dirSeg">
                 <button data-v="lewo_prawo"><span class="dir-ico" data-dir="lewo_prawo"></span><span>Od lewej</span></button>
