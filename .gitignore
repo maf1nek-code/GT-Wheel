@@ -4,3 +4,5 @@ pc/.venv/
 pc/leds.json
 pc/profile_led/
 pc/uklad_kierownicy.json
+pc/ustawienia.json
+pc/kierownica_gt.log

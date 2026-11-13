@@ -173,6 +173,7 @@ function renderStatus() {
   renderEkran();
   if (S.przyp.wl) renderPrzypisywanie();
   renderFw();
+  renderProgram();
   if (!polaczono) {
     const ikona = $('#ovIcon');
     const tytuly = {
@@ -1009,6 +1010,53 @@ function renderProfile() {
   }).join('');
 }
 
+/* ============================================================= USTAWIENIA */
+function renderProgram() {
+  const p = S.program;
+  if (!p) return;
+  const u = p.ustawienia;
+  const auto = $('#pAutostart');
+  auto.checked = p.autostart;
+  auto.disabled = !p.autostart_dostepny;
+  $('#pBrakAutostartu').hidden = p.autostart_dostepny;
+  $('#pBrakTacki').hidden = p.tacka || !p.autostart_dostepny;
+  $$('input[data-prog]').forEach((el) => { el.checked = !!u[el.dataset.prog]; });
+  const ks = $('#pKontroler');
+  if (!ks.children.length) {
+    const krotko = { auto: 'Automatycznie', vjoy: 'vJoy', xbox: 'Pad Xbox 360', brak: 'Wyłączony' };
+    ks.innerHTML = Object.keys(p.kontrolery).map((k) => `<button data-v="${k}" title="${esc(p.kontrolery[k])}">${krotko[k] || esc(k)}</button>`).join('');
+    $('#pVjoy').innerHTML = Array.from({ length: 16 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('');
+  }
+  $$('.seg[data-prog]').forEach((seg) => {
+    $$('button[data-v]', seg).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === u[seg.dataset.prog])));
+  });
+  $('#pVjoy').value = String(u.vjoy_id);
+  $('#pVjoyRow').hidden = !(u.kontroler === 'auto' || u.kontroler === 'vjoy');
+  const ksStan = $('#pKontrolerStan');
+  if (p.kontroler_blad) {
+    ksStan.className = 'note warn';
+    ksStan.innerHTML = `<svg><use href="#i-warn"/></svg><span>${esc(p.kontroler_blad)}</span>`;
+  } else {
+    ksStan.className = 'note' + (u.kontroler === 'brak' ? '' : ' ok');
+    ksStan.innerHTML = `<svg><use href="#i-${u.kontroler === 'brak' ? 'eye' : 'check'}"/></svg><span>${u.kontroler === 'brak'
+      ? 'Przyciski nie są przekazywane do gier (działa tylko test w konfiguratorze).'
+      : `Aktywny: ${esc(p.kontroler_opis)}.`}</span>`;
+  }
+  ustawTekst('pWersja', p.wersja);
+  ustawTekst('pFolder', p.folder);
+  const fw = S.status && S.status.stan === 'polaczono' && S.status.info ? S.status.info.wersja : 'kierownica niepodłączona';
+  ustawTekst('pFirmware', fw);
+}
+
+async function zmienProgram(zmiany, komunikat) {
+  const d = await api('/api/program', { zmiany });
+  if (d) {
+    S.program = d.program;
+    if (komunikat) toast(komunikat, 'ok', 2600);
+  }
+  renderProgram();    // przy błędzie cofa przełącznik do faktycznego stanu
+}
+
 /* ===================================================== AKTUALIZACJA FIRMWARE */
 const wersjaT = (v) => (String(v || '').match(/\d+/g) || []).slice(0, 4).map(Number);
 function nowszaWersja(a, b) {
@@ -1125,6 +1173,8 @@ function obsluz(m) {
         ustawStatus(st);
       }
       S.fw = m.fw; S.fwNajnowsza = m.fw_najnowsza; S.fwBlad = m.fw_blad;
+      S.program = m.program;
+      renderProgram();
       renderFw();
       if (m.blad) toast(`${m.blad} Wczytano ustawienia domyślne.`, 'err', 7000);
       break;
@@ -1146,6 +1196,7 @@ function obsluz(m) {
       if (m.fw.stan !== bylo && m.fw.stan === 'blad') toast('Aktualizacja nie powiodła się.', 'err', 5000);
       break;
     }
+    case 'program': S.program = m.program; renderProgram(); break;
     case 'fw_najnowsza': S.fwNajnowsza = m.najnowsza; S.fwBlad = m.blad; renderFw(); break;
     case 'uklad':
       S.uklad = m.uklad ? { ...m.uklad } : { ...UKLAD_DOMYSLNY };
@@ -1194,6 +1245,28 @@ function podepnij() {
     $('#log').innerHTML = '<li class="log-empty">Tu pojawi się każde wciśnięcie.</li>';
     toast('Test zaczęty od nowa.', 'info');
   });
+  // ustawienia programu
+  $('#pAutostart').addEventListener('change', (e) => zmienProgram({ autostart: e.target.checked },
+    e.target.checked ? 'Program będzie startował razem z Windows (w tle, przy zegarze).' : 'Wyłączono autostart.'));
+  $$('input[data-prog]').forEach((el) => el.addEventListener('change', () => zmienProgram({ [el.dataset.prog]: el.checked })));
+  $('#tab-ustawienia').addEventListener('click', (e) => {
+    const b = e.target.closest('.seg[data-prog] button[data-v]');
+    if (!b || !S.program) return;
+    const klucz = b.closest('.seg').dataset.prog;
+    if (S.program.ustawienia[klucz] !== b.dataset.v) zmienProgram({ [klucz]: b.dataset.v });
+  });
+  $('#pVjoy').addEventListener('change', (e) => zmienProgram({ vjoy_id: +e.target.value }));
+  $('#pFolderBtn').addEventListener('click', () => api('/api/folder'));
+  $('#pFwBtn').addEventListener('click', otworzFw);
+  $('#pZakoncz').addEventListener('click', async () => {
+    if (!(await potwierdz('Zakończyć program?', 'Kierownica przestanie działać w grach (przyciski i diody) do następnego uruchomienia.', 'Zakończ', true))) return;
+    if (await api('/api/zakoncz')) {
+      S.zakonczony = true;
+      $('#offline h3').textContent = 'Program zakończony';
+      $('#offline p').innerHTML = 'Możesz zamknąć to okno. Aby uruchomić ponownie, kliknij <b>Konfigurator_GT.bat</b>.';
+    }
+  });
+
   // aktualizacja firmware
   $('#btnFw').addEventListener('click', otworzFw);
   $('#fwbOpen').addEventListener('click', otworzFw);
@@ -1492,7 +1565,7 @@ function podepnij() {
 (function start() {
   let tab = 'przyciski';
   try { tab = localStorage.getItem('kgt-tab') || tab; } catch { /* bez pamięci */ }
-  pokazZakladke(tab === 'ledy' ? 'ledy' : 'przyciski');
+  pokazZakladke(['ledy', 'ustawienia'].includes(tab) ? tab : 'przyciski');
   przygotujPrzyciski(12, false);
   podepnij();
   polaczZdarzenia();

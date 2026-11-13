@@ -10,13 +10,17 @@ Chrome w trybie aplikacji, bez paskow przegladarki).
   * Test przyciskow - na zywo, na rysunku kierownicy.
   * Diody LED       - kolory, progi obrotow, efekty, podglad, profile.
 
+Program dziala tez w tle (ikona przy zegarze): trzyma polaczenie z kierownica,
+przekazuje przyciski do gry (vJoy / pad Xbox) i steruje diodami z telemetrii.
+Okno konfiguratora otwiera sie tylko na zadanie.
+
 Uruchomienie: Konfigurator_GT.bat  albo  python konfigurator.py [opcje]
+  --tlo              start w tle, bez okna (tak uruchamia autostart Windows)
   --port COM5        konkretny port (domyslnie: automatycznie)
   --bez-okna         nie otwieraj okna (adres wypisze sie w konsoli)
   --zostaw           nie koncz programu po zamknieciu okna
 
-Port COM moze miec otwarty tylko jeden program - zamknij Kierownica_GT.bat
-i Serial Monitor na czas konfiguracji.
+Drugie uruchomienie nie startuje drugiej kopii - otwiera okno juz dzialajacej.
 """
 
 from __future__ import annotations
@@ -48,6 +52,7 @@ except ImportError:
 
 import firmware
 import led_efekty as fx
+import program
 import telemetria
 from kierownica import list_candidate_ports, probe
 
@@ -173,6 +178,15 @@ class Aplikacja:
         self.fw_najnowsza: dict | None = None
         self.fw_blad: str | None = None
 
+        # program w tle: ustawienia, kontroler do gier, ikona przy zegarze
+        self.prog = program.wczytaj()
+        self.kontroler, self.kontroler_opis, self.kontroler_blad = program.utworz_kontroler(
+            self.prog["kontroler"], self.prog["vjoy_id"])
+        self._kontroler_lock = threading.Lock()
+        self.tacka: program.Tacka | None = None
+        self.otworz_okno_cb = None       # ustawiane w main()
+        self.zakoncz_cb = None
+
         # wysylanie na pasek
         self._ser_lock = threading.Lock()
         self._ostatnia_linia = ""
@@ -270,6 +284,8 @@ class Aplikacja:
             self.fw_najnowsza, self.fw_blad = firmware.sprawdz_github(), None
         except firmware.BladFirmware as exc:
             self.fw_blad = str(exc)
+        if self.prog["powiadomienia"] and self.status.get("stan") == "polaczono":
+            self._powiadom_o_firmware()
         self.radio.wyslij({"t": "fw_najnowsza", "najnowsza": self.fw_najnowsza,
                            "blad": self.fw_blad})
 
@@ -371,6 +387,7 @@ class Aplikacja:
                 "fw": self.fw,
                 "fw_najnowsza": self.fw_najnowsza,
                 "fw_blad": self.fw_blad,
+                "program": self.program_dane(),
                 "opcje": {
                     "kierunki": fx.KIERUNKI,
                     "wzory_pit": fx.WZORY_PIT,
@@ -399,8 +416,80 @@ class Aplikacja:
 
     def _ustaw_status(self, stan: str, tekst: str, **dodatkowe) -> None:
         with self.lock:
+            bylo = self.status.get("stan")
             self.status = {"stan": stan, "tekst": tekst, **dodatkowe}
             self.radio.wyslij({"t": "status", "status": self._status_dane()})
+        if self.tacka:
+            krotko = {"polaczono": f"połączono ({dodatkowe.get('port', '')})",
+                      "szukam": "szukam kierownicy", "brak": "nie znaleziono kierownicy",
+                      "zajety": "port zajęty", "utracono": "utracono połączenie",
+                      "rozlaczono": "rozłączono"}.get(stan, tekst)
+            self.tacka.stan(stan, krotko)
+            if self.prog["powiadomienia"] and stan != bylo:
+                if stan == "polaczono":
+                    self.tacka.powiadom("Kierownica podłączona – przyciski i diody działają.")
+                    self._powiadom_o_firmware()
+                elif stan == "utracono" and bylo == "polaczono":
+                    self.tacka.powiadom("Kierownica odłączona. Szukam jej ponownie…")
+
+    def _powiadom_o_firmware(self) -> None:
+        naj, info = self.fw_najnowsza, self.info
+        if self.tacka and naj and info and firmware.nowsza(naj["wersja"], info.version):
+            self.tacka.powiadom(f"Dostępna nowa wersja firmware {naj['wersja']} "
+                                f"(masz {info.version}). Otwórz konfigurator, aby zaktualizować.")
+
+    # ---------------------------------------------------- program w tle
+    def program_dane(self) -> dict:
+        return {
+            "ustawienia": self.prog,
+            "wersja": program.WERSJA_PROGRAMU,
+            "folder": str(program.KATALOG),
+            "autostart_dostepny": program.autostart_dostepny(),
+            "autostart": program.autostart_wlaczony(),
+            "tacka": bool(self.tacka and self.tacka.dostepna),
+            "kontroler_opis": self.kontroler_opis,
+            "kontroler_blad": self.kontroler_blad,
+            "kontrolery": program.KONTROLERY,
+        }
+
+    def zmien_program(self, zmiany: dict) -> None:
+        if "autostart" in zmiany:
+            program.ustaw_autostart(bool(zmiany.pop("autostart")))
+        with self.lock:
+            stary = dict(self.prog)
+            self.prog = program.popraw({**self.prog, **zmiany})
+            program.zapisz(self.prog)
+            nowy_kontroler = (stary["kontroler"], stary["vjoy_id"]) != \
+                (self.prog["kontroler"], self.prog["vjoy_id"])
+        if nowy_kontroler:
+            with self._kontroler_lock:
+                self.kontroler.close()
+                self.kontroler, self.kontroler_opis, self.kontroler_blad = \
+                    program.utworz_kontroler(self.prog["kontroler"], self.prog["vjoy_id"])
+                for i, ch in enumerate(self.bity, start=1):   # przenies aktualny stan przyciskow
+                    if ch == "1":
+                        self.kontroler.set_button(i, True)
+            log(f"Kontroler do gier: {self.kontroler_opis}")
+        if self.tacka:
+            self.tacka.odswiez_menu()
+        self.radio.wyslij({"t": "program", "program": self.program_dane()})
+
+    def przycisk_do_gry(self, numer: int, wcisniety: bool) -> None:
+        with self._kontroler_lock:
+            k = self.kontroler
+            if (numer in k._pressed) == wcisniety:   # bez zmian - nie wysylaj ponownie
+                return
+            try:
+                k.set_button(numer, wcisniety)
+            except Exception as exc:   # np. vJoy odlaczony w trakcie
+                log(f"Kontroler: {exc!r}")
+
+    def pusc_przyciski(self) -> None:
+        with self._kontroler_lock:
+            try:
+                self.kontroler.release_all()
+            except Exception:
+                pass
 
     def polacz(self, port: str | None) -> None:
         with self.lock:
@@ -484,6 +573,7 @@ class Aplikacja:
             self.wyslij_do_kierownicy("STATE?")
 
             powod = self._czytaj(ser, gen)
+            self.pusc_przyciski()      # nic nie moze zostac "wcisniete" w grze
 
             if self._pasek_zapalony:
                 self.wyslij_do_kierownicy("LEDS")
@@ -529,10 +619,14 @@ class Aplikacja:
                             b = list(self.bity)
                             b[numer - 1] = "1" if wl else "0"
                             self.bity = "".join(b)
+                    self.przycisk_do_gry(numer, wl)
                     self.radio.wyslij({"t": "przycisk", "n": numer, "wl": wl, "pin": pin})
                 elif cz[0] == "STATE" and len(cz) >= 2:
                     with self.lock:
                         self.bity = cz[1]
+                    for i, ch in enumerate(cz[1], start=1):   # naprawia zgubione komunikaty
+                        if ch in "01":
+                            self.przycisk_do_gry(i, ch == "1")
                     self.radio.wyslij({"t": "stan", "bity": cz[1]})
                 elif cz[0] == "INFO" and len(cz) >= 5 and cz[1] == "BTN" and cz[2].isdigit() \
                         and cz[3] == "PIN":
@@ -578,6 +672,13 @@ class Aplikacja:
     def _klatka(self) -> None:
         t = time.monotonic() - self._t0
         self.gra = self.czytnik.odczyt()
+        if self.radio.liczba == 0:
+            # okno zamkniete - program w tle: diody pokazuja gre (jak w czasie jazdy)
+            with self.lock:
+                u = fx.popraw_ustawienia(self.u)
+            self._na_pasek(fx.klatka(u, self.gra.telemetria(), t), u,
+                           {"wysylaj": self.prog["diody_w_grze"]})
+            return
         with self.lock:
             u = fx.popraw_ustawienia(self.u)
             if self.sim["stan"] == "gra":
@@ -642,6 +743,11 @@ class Aplikacja:
         self.koniec.set()
         self.zmiana.set()
         self.czytnik.zamknij()
+        self.pusc_przyciski()
+        try:
+            self.kontroler.close()
+        except Exception:
+            pass
         if self._pasek_zapalony:
             self.wyslij_do_kierownicy("LEDS")
 
@@ -721,6 +827,9 @@ def stworz_obsluge(app: Aplikacja, port_http: list):
             sciezka = urlsplit(self.path).path
             if sciezka == "/api/zdarzenia":
                 self._sse()
+                return
+            if sciezka == "/api/ping":
+                self._json({"ok": True, "app": "KierownicaGT", "wersja": program.WERSJA_PROGRAMU})
                 return
             if sciezka == "/api/porty":
                 porty = [{"port": p.device, "opis": p.description or ""}
@@ -860,6 +969,30 @@ def stworz_obsluge(app: Aplikacja, port_http: list):
                 return {"kolory": [fx.kolor_na_hex(c)
                                    for c in fx.kolory_gradient(n, kierunek, punkty)]}
 
+            if sciezka == "/api/program":
+                zmiany = d.get("zmiany")
+                if not isinstance(zmiany, dict):
+                    raise BladZapytania("Brak zmian.")
+                try:
+                    app.zmien_program(zmiany)
+                except OSError as exc:
+                    raise BladZapytania(f"Nie udało się zmienić autostartu: {exc}") from exc
+                return {"program": app.program_dane()}
+
+            if sciezka == "/api/folder":
+                program.otworz_folder()
+                return {}
+
+            if sciezka == "/api/pokaz":
+                if app.otworz_okno_cb:
+                    app.otworz_okno_cb()
+                return {}
+
+            if sciezka == "/api/zakoncz":
+                if app.zakoncz_cb:
+                    threading.Timer(0.3, app.zakoncz_cb).start()
+                return {}
+
             if sciezka == "/api/fw/sprawdz":
                 app.fw_sprawdz()
                 return {"najnowsza": app.fw_najnowsza, "blad": app.fw_blad}
@@ -984,9 +1117,44 @@ def wolny_port() -> int:
     raise OSError("Brak wolnego portu")
 
 
+def dzialajaca_kopia(port: int) -> bool:
+    """Czy na tym porcie dziala juz Kierownica GT. Jesli tak - kaze jej pokazac okno."""
+    import http.client
+    try:
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=1.5)
+        c.request("GET", "/api/ping", headers={"Host": f"127.0.0.1:{port}"})
+        odp = c.getresponse()
+        if odp.status != 200 or json.loads(odp.read() or b"{}").get("app") != "KierownicaGT":
+            return False
+        c.request("POST", "/api/pokaz", body=b"{}",
+                  headers={"Host": f"127.0.0.1:{port}", "Content-Type": "application/json"})
+        c.getresponse().read()
+        return True
+    except (OSError, ValueError, http.client.HTTPException):
+        return False
+
+
+def przekieruj_wyjscie() -> None:
+    """pythonw (autostart) nie ma konsoli - komunikaty ida do pliku kierownica_gt.log."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    plik = program.KATALOG / "kierownica_gt.log"
+    try:
+        if plik.exists() and plik.stat().st_size > 1_000_000:
+            plik.unlink()
+        f = open(plik, "a", encoding="utf-8", buffering=1)  # noqa: SIM115 - przez caly czas
+        sys.stdout = sys.stdout or f
+        sys.stderr = sys.stderr or f
+    except OSError:
+        pass
+
+
 def main() -> None:
+    przekieruj_wyjscie()
     ap = argparse.ArgumentParser(description="Kierownica GT - konfigurator")
     ap.add_argument("--port", help="konkretny port, np. COM5 (domyślnie: automatycznie)")
+    ap.add_argument("--tlo", action="store_true",
+                    help="start w tle, bez okna (ikona przy zegarze) - używa tego autostart")
     ap.add_argument("--bez-okna", action="store_true", help="nie otwieraj okna")
     ap.add_argument("--zostaw", action="store_true", help="nie kończ po zamknięciu okna")
     ap.add_argument("--http", type=int, default=0, help="port serwera (domyślnie automatycznie)")
@@ -997,23 +1165,47 @@ def main() -> None:
     except Exception:
         pass
 
+    # tylko jedna kopia: kolejne uruchomienie otwiera okno juz dzialajacego programu
+    if not args.http and dzialajaca_kopia(PREFEROWANY_PORT_HTTP):
+        log("Kierownica GT juz dziala - otwieram jej okno.")
+        return
+
     app = Aplikacja(args.port)
     port_http = [args.http or wolny_port()]
     serwer = ThreadingHTTPServer(("127.0.0.1", port_http[0]), stworz_obsluge(app, port_http))
     serwer.daemon_threads = True
     adres = f"http://127.0.0.1:{port_http[0]}/"
 
+    def zakoncz() -> None:
+        log("Zamykanie programu…")
+        threading.Thread(target=serwer.shutdown, daemon=True).start()
+
+    def otworz() -> None:
+        otworz_okno(adres)
+
+    def przelacz_diody() -> None:
+        app.zmien_program({"diody_w_grze": not app.prog["diody_w_grze"]})
+
+    app.otworz_okno_cb = otworz
+    app.zakoncz_cb = zakoncz
+    tacka = program.Tacka(otworz, zakoncz, przelacz_diody, lambda: app.prog["diody_w_grze"])
+    if tacka.dostepna:
+        app.tacka = tacka
+        tacka.start()
+
     threading.Thread(target=app.watek_kierownicy, daemon=True).start()
     threading.Thread(target=app.watek_animacji, daemon=True).start()
     threading.Thread(target=app.fw_sprawdz, daemon=True).start()   # czy jest nowszy firmware
 
     def straznik() -> None:
-        """Konczy program, gdy okno zostalo zamkniete."""
+        """Po zamknieciu okna: zostan przy zegarze albo zakoncz (wg ustawien)."""
         start = time.monotonic()
         while not app.koniec.is_set():
             time.sleep(1.0)
-            if args.zostaw or app.radio.liczba > 0:
+            if args.zostaw or args.tlo and not app.radio.byl_ktos or app.radio.liczba > 0:
                 continue
+            if app.tacka and app.prog["po_zamknieciu"] == "tlo":
+                continue      # dziala dalej w tle - konczy sie z menu ikony
             odkad = app.radio.ostatnio_ktos if app.radio.byl_ktos else start
             limit = ZAMKNIJ_PO_S if app.radio.byl_ktos else 120.0
             if time.monotonic() - odkad > limit:
@@ -1027,15 +1219,21 @@ def main() -> None:
     print("  KIEROWNICA GT  -  konfigurator")
     print("=" * 60)
     log(f"Okno konfiguratora: {adres}")
-    log("Zamknij okno konfiguratora, aby zakonczyc (albo Ctrl+C tutaj).")
-    if not args.bez_okna:
-        otworz_okno(adres)
+    log(f"Kontroler do gier: {app.kontroler_opis}")
+    if app.tacka:
+        log("Program dziala tez przy zegarze (ikona Kierownica GT). Konczy sie z jej menu.")
+    else:
+        log("Zamknij okno konfiguratora, aby zakonczyc (albo Ctrl+C tutaj).")
+    otworz_teraz = not args.bez_okna and (not args.tlo or app.prog["okno_przy_autostarcie"])
+    if otworz_teraz:
+        otworz()
 
     try:
         serwer.serve_forever(poll_interval=0.3)
     except KeyboardInterrupt:
         pass
     finally:
+        tacka.zatrzymaj()
         app.zamknij()
         serwer.server_close()
         time.sleep(0.2)

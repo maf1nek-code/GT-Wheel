@@ -1,6 +1,6 @@
 @echo off
 REM ==========================================================
-REM  Kierownica GT - konfigurator (test przyciskow, diody LED)
+REM  Kierownica GT - konfigurator i program w tle (ikona przy zegarze)
 REM  Przy pierwszym uruchomieniu tworzy srodowisko Pythona
 REM  (folder pc\.venv) i instaluje potrzebne biblioteki.
 REM  Przed uruchomieniem zamknij Kierownica_GT.bat (port COM
@@ -53,8 +53,9 @@ if errorlevel 1 (
 copy /y requirements.txt ".venv\zainstalowane.txt" >nul
 
 :run
-"%VENV_PY%" konfigurator.py %*
-
-echo.
-echo Program zakonczony.
-pause
+REM Program dziala w tle (ikona przy zegarze), wiec uruchamiamy go bez okna konsoli.
+REM Komunikaty trafiaja do pliku pc\kierownica_gt.log.
+set "VENV_PYW=.venv\Scripts\pythonw.exe"
+if not exist "%VENV_PYW%" set "VENV_PYW=%VENV_PY%"
+start "" "%VENV_PYW%" konfigurator.py %*
+exit /b 0
