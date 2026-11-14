@@ -660,6 +660,11 @@ input[type="range"]:disabled { opacity: .4; cursor: default; }
 .st-color .swatch { width: 22px; height: 22px; }
 .st-foot { display: flex; justify-content: flex-end; margin-top: auto; }
 .st-row.stack { grid-template-columns: 1fr; gap: 6px; }
+.st-row.stack .st-seg { flex-wrap: wrap; }
+.st-row.stack .st-seg button { flex: 1 1 30%; }
+.anim-row { display: flex; gap: 10px; align-items: center; }
+.anim-row .seg { flex: 1; }
+.label small { font-weight: 400; font-size: 12px; }
 .st-seg button { padding: 6px 4px; font-size: 12px; min-width: 0; }
 .st-swap { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text-2); cursor: pointer; }
 .mini-stepper { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
