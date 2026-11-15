@@ -1,232 +1,247 @@
-# Kierownica GT
+# GT Wheel
 
-Przyciski kierownicy do simracingu na ESP32 (ESP32-WROOM-32 / ESP32 DevKit). ESP32 wysyła odczyty przycisków
-przez USB (port szeregowy), a program w Pythonie zamienia je na wirtualny kontroler do gier w Windows.
+Sim-racing wheel buttons on an ESP32 (ESP32-WROOM-32 / ESP32 DevKit). The ESP32 sends button readings
+over USB (serial port), and a Python program turns them into a virtual game controller on Windows.
 
 ```
-[przyciski] -> ESP32 --USB/COM--> kierownica.py -> vJoy / pad Xbox 360 -> gra
+[buttons] -> ESP32 --USB/COM--> kierownica.py -> vJoy / Xbox 360 pad -> game
 ```
 
-## Struktura
+The configurator's interface and the program messages are in Polish. Where this README names a button
+or a tab, the Polish label is given in quotes with an English translation.
 
-| Plik | Opis |
+## Structure
+
+| File | Description |
 |---|---|
-| `esp32/kierownica_gt/kierownica_gt.ino` | firmware do wgrania z Arduino IDE |
-| `pc/kierownica.py` | program na PC: autowykrywanie portu + emulacja kontrolera |
-| `pc/konfigurator.py` | konfigurator: obsługa kierownicy i efektów LED w tle, otwiera okno z `pc/ui` |
-| `pc/ui/` | wygląd konfiguratora (HTML/CSS/JS) |
-| `pc/led_efekty.py` | liczenie efektów LED (obroty, zmiana biegu, pit limiter, flagi) |
-| `pc/telemetria.py` | odczyt telemetrii z AC, ACC i Le Mans Ultimate (z spotterem) |
-| `pc/firmware.py` | aktualizacja firmware: wydania z GitHuba + esptool |
-| `.github/workflows/firmware.yml` | budowanie firmware i publikowanie wydań |
-| `pc/requirements.txt` | biblioteki Pythona |
-| `Kierownica_GT.bat` | uruchamianie dwuklikiem (sam instaluje biblioteki za 1. razem) |
-| `Konfigurator_GT.bat` | uruchamianie konfiguratora dwuklikiem |
+| `esp32/gt_wheel/gt_wheel.ino` | firmware, uploaded from the Arduino IDE |
+| `pc/kierownica.py` | PC program: port auto-detection + controller emulation |
+| `pc/konfigurator.py` | configurator: runs the wheel and the LED effects in the background, opens the window from `pc/ui` |
+| `pc/ui/` | the configurator's interface (HTML/CSS/JS) |
+| `pc/led_efekty.py` | LED effects (revs, shift light, pit limiter, flags) |
+| `pc/telemetria.py` | telemetry from AC, ACC and Le Mans Ultimate (with spotter) |
+| `pc/firmware.py` | firmware updates: GitHub releases + esptool |
+| `.github/workflows/firmware.yml` | builds the firmware and publishes releases |
+| `pc/requirements.txt` | Python libraries |
+| `led-strip-mount/` | 3D-printable case and holder for the LED strip (STEP + STL) |
+| `GT_Wheel.bat` | double-click to run (installs the libraries on first run) |
+| `GT_Wheel_Configurator.bat` | double-click to run the configurator |
 
-## Przyciski i piny (ESP32-WROOM-32 / ESP32 DevKit)
+The Python file names stay in Polish on purpose: Windows autostart points to `pc/konfigurator.py`,
+so renaming it would break autostart for existing installs.
 
-Każdy przycisk zwiera pin do **GND**. Wspólny przewód GND podłącz do dowolnego pinu GND na płytce.
-Firmware włącza wewnętrzny pull-up, więc rezystory nie są potrzebne.
-Przyciski z lewej strony kierownicy idą na lewą listwę płytki, a z prawej strony na prawą.
+## Buttons and pins (ESP32-WROOM-32 / ESP32 DevKit)
 
-| Przycisk | stary opis (Nano) | ESP32-WROOM-32 | strona płytki |
+Each button shorts a pin to **GND**. Connect the common GND wire to any GND pin on the board.
+The firmware enables the internal pull-ups, so no resistors are needed.
+Buttons on the left side of the wheel go to the left header of the board, buttons on the right side to the right one.
+
+| Button | old label (Nano) | ESP32-WROOM-32 | board side |
 |---:|---|---|---|
-| 1 | A3 | **GPIO32** (D32) | lewa |
-| 2 | A2 | **GPIO33** (D33) | lewa |
-| 3 | D8 | **GPIO25** (D25) | lewa |
-| 4 | D10 | **GPIO26** (D26) | lewa |
-| 5 | A1 | **GPIO27** (D27) | lewa |
-| 6 | GND | **GPIO23** (D23) | prawa |
-| 7 | VIN | **GPIO22** (D22) | prawa |
-| 8 | A7 | **GPIO21** (D21) | prawa |
-| 9 | A6 | **GPIO19** (D19) | prawa |
-| 10 | A5 | **GPIO18** (D18) | prawa |
-| 11 | D6 | **GPIO14** (D14) | lewa |
-| 12 | D5 | **GPIO4** (D4) | prawa |
+| 1 | A3 | **GPIO32** (D32) | left |
+| 2 | A2 | **GPIO33** (D33) | left |
+| 3 | D8 | **GPIO25** (D25) | left |
+| 4 | D10 | **GPIO26** (D26) | left |
+| 5 | A1 | **GPIO27** (D27) | left |
+| 6 | GND | **GPIO23** (D23) | right |
+| 7 | VIN | **GPIO22** (D22) | right |
+| 8 | A7 | **GPIO21** (D21) | right |
+| 9 | A6 | **GPIO19** (D19) | right |
+| 10 | A5 | **GPIO18** (D18) | right |
+| 11 | D6 | **GPIO14** (D14) | left |
+| 12 | D5 | **GPIO4** (D4) | right |
 
-Na płytkach DevKit piny są zwykle opisane jako `D32`, `D33` itd. albo samymi numerami.
+On DevKit boards the pins are usually labelled `D32`, `D33` and so on, or just with numbers.
 
-Pominięte są piny, które sprawiają problemy:
+Pins that cause trouble are skipped:
 
-- GPIO 0, 2, 5, 12, 15: piny „strapping”. Przycisk wciśnięty przy starcie może zablokować uruchomienie albo wgrywanie.
-- GPIO 1 i 3: TX/RX portu USB.
-- GPIO 6–11: pamięć flash.
-- GPIO 34–39: tylko wejścia, bez pull-upa.
+- GPIO 0, 2, 5, 12, 15: strapping pins. A button held down at power-up can block booting or uploading.
+- GPIO 1 and 3: TX/RX of the USB port.
+- GPIO 6–11: flash memory.
+- GPIO 34–39: input only, no pull-up.
 
-Zapasowe dobre piny: GPIO 16 i 17 (GPIO 13 jest zajęty przez pasek LED).
+Spare good pins: GPIO 16 and 17 (GPIO 13 is used by the LED strip).
 
-## Pasek LED (opcjonalny)
+## LED strip (optional)
 
-Pasek WS2812B (np. 8–24 diody) pokazuje obroty silnika i stany specjalne. Kolory liczy program
-na PC, a ESP32 tylko je wyświetla, więc zmiana kolorów nie wymaga ponownego wgrywania firmware.
+A WS2812B strip (e.g. 8–24 LEDs) shows engine revs and special states. The colours are computed by the
+PC program and the ESP32 only displays them, so changing colours never requires re-uploading the firmware.
 
-| Pasek | ESP32 |
+| Strip | ESP32 |
 |---|---|
-| DIN | **GPIO13** przez rezystor ok. 330 Ω |
-| 5V | pin **VIN/5V** płytki |
+| DIN | **GPIO13** through a resistor of about 330 Ω |
+| 5V | the board's **VIN/5V** pin |
 | GND | **GND** |
 
-- Przy zasilaniu z USB trzymaj jasność ≤ 40%. Każda dioda świecąca na biało na 100% pobiera
-  ok. 60 mA. Przy dłuższym pasku użyj osobnego zasilacza 5 V (GND wspólne z ESP32).
-- Firmware obsługuje do 60 diod. Bez danych z PC przez 3 s pasek gaśnie.
-- Bez paska możesz zostawić firmware bez zmian albo ustawić `LED_ENABLED` na `0`.
+- On USB power keep the brightness at 40% or less. Each LED lit full white at 100% draws about 60 mA.
+  For a longer strip use a separate 5 V supply (GND shared with the ESP32).
+- The firmware supports up to 60 LEDs. The strip turns off after 3 s without data from the PC.
+- Without a strip you can leave the firmware as it is, or set `LED_ENABLED` to `0`.
 
-## 1. Wgranie firmware (Arduino IDE)
+The `led-strip-mount/` folder has a 3D-printable case for a 70 mm strip and a two-part holder
+(body + lid), with print-ready parts in `led-strip-mount/print/`.
 
-1. *Boards Manager* → zainstaluj pakiet **esp32** by Espressif Systems.
-   *Tools → Manage Libraries* → zainstaluj **Adafruit NeoPixel** (do paska LED).
-2. *Tools → Board* → **ESP32 Dev Module**. W Windows może być potrzebny sterownik **CP210x**
-   albo **CH340**, zależnie od układu USB na płytce.
-3. Otwórz `esp32/kierownica_gt/kierownica_gt.ino` i kliknij **Upload**. Jeśli wgrywanie stoi na
-   `Connecting...`, przytrzymaj przycisk **BOOT** na płytce.
-4. Test: *Serial Monitor* na 115200 baud. Po wciśnięciu przycisku zobaczysz np. `BTN 10 ON GPIO18`.
-   Komenda `INFO` wypisuje listę pinów.
-   **Przed uruchomieniem programu w Pythonie zamknij Serial Monitor**, bo zajmuje port.
+## 1. Uploading the firmware (Arduino IDE)
 
-Protokół (tekst, 115200 baud):
+1. *Boards Manager* → install the **esp32** package by Espressif Systems.
+   *Tools → Manage Libraries* → install **Adafruit NeoPixel** (for the LED strip).
+2. *Tools → Board* → **ESP32 Dev Module**. On Windows you may need the **CP210x** or **CH340**
+   driver, depending on the USB chip on your board.
+3. Open `esp32/gt_wheel/gt_wheel.ino` and click **Upload**. If the upload hangs on
+   `Connecting...`, hold the **BOOT** button on the board.
+4. Test: *Serial Monitor* at 115200 baud. Pressing a button prints e.g. `BTN 10 ON GPIO18`.
+   The `INFO` command lists the pins.
+   **Close the Serial Monitor before starting the Python program**, because it holds the port.
 
-| Od ESP32 | Znaczenie |
+Protocol (text, 115200 baud):
+
+| From the ESP32 | Meaning |
 |---|---|
-| `BTN <nr> ON <pin>` / `BTN <nr> OFF <pin>` | zmiana stanu przycisku |
-| `STATE 000000000100` | pełny stan, wysyłany co 1 s (1 = wciśnięty) |
-| `PONG KIEROWNICA_GT 1.1 12 LED 60` | odpowiedź na `PING` (po niej PC rozpoznaje kierownicę; `LED 60` = obsługa paska do 60 diod) |
+| `BTN <nr> ON <pin>` / `BTN <nr> OFF <pin>` | a button changed state |
+| `STATE 000000000100` | full state, sent every 1 s (1 = pressed) |
+| `PONG KIEROWNICA_GT 1.1 12 LED 60` | reply to `PING` (the PC recognises the wheel by it; `LED 60` = supports a strip of up to 60 LEDs) |
 
-| Od PC | Znaczenie |
+| From the PC | Meaning |
 |---|---|
-| `PING` / `STATE?` / `INFO` | powitanie / pełny stan przycisków / lista pinów |
-| `LEDS RRGGBBRRGGBB…` | kolory paska (6 znaków hex na diodę, jasność już uwzględniona) |
-| `LEDS` | zgaś pasek |
+| `PING` / `STATE?` / `INFO` | hello / full button state / pin list |
+| `LEDS RRGGBBRRGGBB…` | strip colours (6 hex characters per LED, brightness already applied) |
+| `LEDS` | turn the strip off |
 
-## 2. Sterownik wirtualnego kontrolera (Windows)
+The `KIEROWNICA_GT` identifier in `PONG` is part of the protocol and stays as it is, so older firmware and the PC program keep recognising each other.
 
-Wybierz jeden:
+## 2. Virtual controller driver (Windows)
 
-- **vJoy (zalecany do simracingu)**: zwykły joystick z przyciskami 1–12, które w grze widać jako
-  „Przycisk 10” itd. Pobierz z <https://github.com/BrunnerInnovation/vJoy/releases>, potem w
-  *Configure vJoy* włącz urządzenie 1 z co najmniej **12 przyciskami**.
-- **Pad Xbox 360 (ViGEmBus)**: instaluje się razem z biblioteką `vgamepad`. Jeśli instalator się
-  nie pojawi, pobierz go z <https://github.com/nefarius/ViGEmBus/releases>.
-  Przypisania są w `XBOX_MAPPING` w `kierownica.py`.
+Pick one:
 
-Domyślny tryb `auto` używa vJoy, a gdy go nie ma, pada Xbox.
+- **vJoy (recommended for sim racing)**: a regular joystick with buttons 1–12, shown in games as
+  "Button 10" and so on. Download it from <https://github.com/BrunnerInnovation/vJoy/releases>, then in
+  *Configure vJoy* enable device 1 with at least **12 buttons**.
+- **Xbox 360 pad (ViGEmBus)**: installed together with the `vgamepad` library. If the installer
+  doesn't appear, download it from <https://github.com/nefarius/ViGEmBus/releases>.
+  The button mapping is in `XBOX_MAPPING` in `kierownica.py`.
 
-## 3. Konfigurator (test przycisków i diody LED)
+The default `auto` mode uses vJoy, and the Xbox pad when vJoy isn't installed.
 
-Kliknij dwukrotnie **`Konfigurator_GT.bat`**. Otworzy się okno konfiguratora (Microsoft Edge
-w trybie aplikacji, bez pasków przeglądarki – Edge jest w każdym Windows 10/11), a przy zegarze
-pojawi się **ikona Kierownica GT**.
+## 3. Configurator (button test and LEDs)
 
-**Program działa w tle.** Po zamknięciu okna zostaje przy zegarze: trzyma połączenie z kierownicą,
-przekazuje przyciski do gier (vJoy / pad Xbox) i steruje diodami z telemetrii. Okno otwierasz
-z powrotem dwuklikiem ikony (albo jeszcze raz `Konfigurator_GT.bat`), a program kończysz z menu ikony
-(prawy przycisk → **Zakończ**). Kropka na ikonie: zielona – kierownica połączona, pomarańczowa –
-szukanie, czerwona – port zajęty. Dzięki temu `Kierownica_GT.bat` nie jest już potrzebny.
+Double-click **`GT_Wheel_Configurator.bat`**. The configurator window opens (Microsoft Edge in app
+mode, without browser bars – Edge comes with every Windows 10/11), and a **GT Wheel icon** appears
+next to the clock.
 
-**Ustawienia** (zakładka w oknie):
+**The program runs in the background.** After you close the window it stays next to the clock: it keeps
+the connection to the wheel, passes the buttons to games (vJoy / Xbox pad) and drives the LEDs from
+telemetry. Open the window again by double-clicking the icon (or running `GT_Wheel_Configurator.bat`
+again), and quit from the icon menu (right-click → "Zakończ", Quit). The dot on the icon: green – wheel
+connected, orange – searching, red – port busy. Thanks to this, `GT_Wheel.bat` is no longer needed.
 
-- **Uruchamiaj z systemem Windows** – po włączeniu komputera program startuje w tle, bez okna,
-  tylko z ikoną przy zegarze. Wpis trafia do autostartu bieżącego użytkownika (bez uprawnień
-  administratora); wyłączenie przełącznika go usuwa.
-- **Otwieraj okno przy autostarcie**, **Po zamknięciu okna**: działaj w tle albo zakończ program.
-- **Kontroler w grach**: automatycznie / vJoy (z numerem urządzenia) / pad Xbox 360 / wyłączony.
-- **Steruj diodami w czasie gry**, **Powiadomienia przy zegarze** (podłączenie kierownicy, nowy firmware).
-- O programie: wersja, folder, aktualizacja firmware, zakończenie programu.
+**Settings** ("Ustawienia" tab):
 
-Komunikaty programu działającego w tle zapisują się w `pc/kierownica_gt.log`.
+- **Start with Windows** – after the computer starts, the program runs in the background without a
+  window, only with the icon next to the clock. The entry goes to the current user's autostart (no
+  administrator rights needed); turning the switch off removes it.
+- **Open the window on autostart**, **When the window is closed**: keep running in the background or quit.
+- **Controller in games**: automatic / vJoy (with device number) / Xbox 360 pad / off.
+- **Drive the LEDs while playing**, **Notifications next to the clock** (wheel connected, new firmware).
+- About: version, folder, firmware update, quit.
 
-**Test przycisków**: rysunek tej kierownicy (karbonowa płyta, pasek 16 diod, ekran, 10 kolorowych
-przycisków i 3 pokrętła). Wciśnięty przycisk świeci, sprawdzony dostaje ✓, a ekran na rysunku pokazuje
-ostatnio wciśnięty przycisk, jego pin, czas trzymania i postęp testu. Pasek diod na rysunku świeci tak
-samo jak prawdziwy. Przycisk wciśnięty już w chwili połączenia pulsuje na pomarańczowo – może to
-oznaczać zwarcie pinu do GND. Obok jest lista pinów i dziennik.
+Messages from the background program are written to `pc/kierownica_gt.log`.
 
-**Przypisz przyciski**: ustala, który numer przycisku z firmware jest w którym miejscu rysunku.
-Klikasz miejsce na rysunku i wciskasz ten przycisk na kierownicy (program sam przechodzi do następnego
-miejsca). Układ zapisuje się w `pc/uklad_kierownicy.json`. Domyślny układ jest zgadnięty z tabeli pinów:
-lewa strona 1–5 i lewe pokrętło 11, prawa strona 6–10 i prawe pokrętło 12.
+**Button test** ("Test przycisków"): a drawing of this wheel (carbon plate, 16-LED strip, screen, 10
+coloured buttons and 3 rotary knobs). A pressed button lights up, a checked one gets a ✓, and the screen
+on the drawing shows the last pressed button, its pin, how long it was held and the test progress. The
+LED strip on the drawing lights up exactly like the real one. A button that is already pressed when the
+wheel connects pulses orange – it may mean the pin is shorted to GND. Next to it there is a pin list and a log.
 
-**Diody LED**:
+**Assign buttons** ("Przypisz przyciski"): sets which firmware button number sits where on the drawing.
+Click a spot on the drawing and press that button on the wheel (the program moves on to the next spot by
+itself). The layout is saved in `pc/uklad_kierownicy.json`. The default layout is guessed from the pin
+table: left side 1–5 and left knob 11, right side 6–10 and right knob 12.
 
-- podgląd na żywo i symulacja: jazda (obroty ręcznie albo automatycznie), pit limiter, flagi,
-  gra wyłączona; przełącznik **Na kierownicy** pokazuje to samo na prawdziwym pasku,
-- liczba diod, jasność (z wyliczeniem poboru prądu), kierunek zapalania,
-- kolory: zaznaczasz diody myszką (przeciągnięcie, Shift = zakres, Ctrl = pojedyncze) i wybierasz
-  kolor; są gotowe zestawy, własny gradient i odbicie lustrzane,
-- progi obrotów na jednym suwaku z trzema znacznikami (pierwsza dioda, wszystkie, zmiana biegu),
-- animacja startowa (biała fala albo tęcza), odtwarzana raz po podłączeniu kierownicy,
-- stany specjalne z podglądem każdego z nich: zmiana biegu, pit limiter (3 wzory), flaga żółta
-  i niebieska (na skrajnych diodach albo całym pasku), gra wyłączona (oczekiwanie – środkowe diody przygaszone, zgaszone, stały, oddech, skaner),
-- **Zapisz** (Ctrl+S) zapisuje do `pc/leds.json` – z tego pliku będzie korzystał program w czasie gry,
-- **Profile**: osobne zestawy ustawień, np. dla każdej gry (`pc/profile_led/`), plus eksport
-  i import do pliku.
+**LEDs** ("Diody LED"):
 
-`pc/leds.json` i profile nie są w gicie, więc aktualizacje ich nie nadpiszą.
+- live preview and simulation: driving (revs by hand or automatic), pit limiter, flags, game off; the
+  "Na kierownicy" (on the wheel) switch shows the same on the real strip,
+- number of LEDs, brightness (with a current draw estimate), lighting direction,
+- colours: select LEDs with the mouse (drag, Shift = range, Ctrl = single) and pick a colour; there
+  are presets, a custom gradient and mirroring,
+- rev thresholds on one slider with three markers (first LED, all LEDs, shift point),
+- start-up animation (white wave or rainbow), played once when the wheel connects,
+- special states, each with a preview: shift point, pit limiter (3 patterns), yellow and blue flag
+  (on the outer LEDs or the whole strip), game off (waiting – centre LEDs dimmed, off, steady,
+  breathing, scanner),
+- **Save** ("Zapisz", Ctrl+S) writes to `pc/leds.json` – the program uses this file while you play,
+- **Profiles**: separate sets of settings, e.g. one per game (`pc/profile_led/`), plus export
+  and import to a file.
 
-W podglądzie jest też tryb **Gra na żywo**: gdy gra działa, panel pod paskiem pokazuje, co program
-z niej odczytuje (obroty, bieg, pit limiter, flaga), a pasek świeci jak w czasie jazdy. Tak najłatwiej
-ustawić progi pod konkretne auto.
+`pc/leds.json` and the profiles are not in git, so updates never overwrite them.
 
-## 4. Diody w czasie gry (telemetria)
+The preview also has a **live game** mode ("Gra na żywo"): while a game is running, the panel under the
+strip shows what the program reads from it (revs, gear, pit limiter, flag), and the strip lights up as
+it would while driving. This is the easiest way to set thresholds for a specific car.
 
-Obsługiwane gry: **Assetto Corsa**, **Assetto Corsa Competizione** i **Le Mans Ultimate**.
-Uruchom grę i **`Kierownica_GT.bat`** (jak zawsze). Program sam wykryje grę i będzie sterował paskiem
-według ustawień z konfiguratora (`pc/leds.json`):
+## 4. LEDs while playing (telemetry)
 
-- obroty → kolejne diody, od progu „zmiana biegu” cały pasek miga,
-- pit limiter, flaga żółta i niebieska → efekty ze „Stanów specjalnych”,
-- **spotter** (ACC i Le Mans Ultimate): auto obok ciebie zapala skrajne diody po jego stronie.
-  Assetto Corsa nie podaje pozycji innych aut, więc tam spotter nie działa. Jeśli w którejś grze
-  strony wyjdą odwrotnie, w karcie „Spotter” włącz „Zamień lewą i prawą stronę”,
-- menu, pauza, powtórka albo brak gry → efekt „Gra wyłączona”.
+Supported games: **Assetto Corsa**, **Assetto Corsa Competizione** and **Le Mans Ultimate**.
+Start the game and **`GT_Wheel.bat`** (as usual). The program detects the game by itself and drives the
+strip according to the configurator settings (`pc/leds.json`):
 
-Wystarczy, że program działa przy zegarze (np. z autostartem) – w czasie gry okno może być zamknięte.
-Gdy okno jest otwarte, pasek pokazuje podgląd z konfiguratora (tryb **Gra na żywo** pokazuje grę).
+- revs → LEDs light up one after another, from the shift threshold the whole strip blinks,
+- pit limiter, yellow and blue flag → the effects from the special states,
+- **spotter** (ACC and Le Mans Ultimate): a car next to you lights the outer LEDs on its side.
+  Assetto Corsa doesn't provide other cars' positions, so the spotter doesn't work there. If the sides
+  come out reversed in a game, turn on "Zamień lewą i prawą stronę" (swap left and right) in the
+  "Spotter" card,
+- menu, pause, replay or no game → the "game off" effect.
 
-Stary sposób też działa: `Kierownica_GT.bat` (okno konsoli, opcja `--bez-diod`), ale **nie uruchamiaj
-go razem z konfiguratorem** – oba używają tego samego portu COM.
+It's enough that the program runs next to the clock (e.g. with autostart) – the window can be closed
+while you play. When the window is open, the strip shows the configurator preview (the live game mode
+shows the game).
 
-| Gra | Skąd dane | Co trzeba zrobić |
+The old way still works: `GT_Wheel.bat` (console window, `--bez-diod` option to disable the LEDs), but
+**don't run it together with the configurator** – both use the same COM port.
+
+| Game | Data source | What to do |
 |---|---|---|
-| Assetto Corsa | wbudowana pamięć współdzielona | nic |
-| Assetto Corsa Competizione | wbudowana pamięć współdzielona | nic |
-| Le Mans Ultimate | wtyczka rF2SharedMemoryMapPlugin | włączyć wtyczkę (poniżej) |
+| Assetto Corsa | built-in shared memory | nothing |
+| Assetto Corsa Competizione | built-in shared memory | nothing |
+| Le Mans Ultimate | rF2SharedMemoryMapPlugin plugin | enable the plugin (below) |
 
-**Le Mans Ultimate – włączenie wtyczki** (tylko jeśli konfigurator pisze, że gra „nie udostępnia
-danych”; jeśli używasz SimHub albo CrewChief, zwykle jest już włączona):
+**Le Mans Ultimate – enabling the plugin** (only if the configurator says the game "doesn't share
+data"; if you use SimHub or CrewChief, it's usually enabled already):
 
-1. Pobierz `rFactor2SharedMemoryMapPlugin64.dll` (projekt *rF2SharedMemoryMapPlugin* autora
-   TheIronWolfModding na GitHubie) i skopiuj go do folderu gry `Le Mans Ultimate\Plugins\`.
-2. Uruchom grę raz i zamknij. W pliku `Le Mans Ultimate\UserData\player\CustomPluginVariables.JSON`
-   przy `rFactor2SharedMemoryMapPlugin64.dll` ustaw `" Enabled": 1`.
-3. Uruchom grę ponownie.
+1. Download `rFactor2SharedMemoryMapPlugin64.dll` (the *rF2SharedMemoryMapPlugin* project by
+   TheIronWolfModding on GitHub) and copy it to the game folder `Le Mans Ultimate\Plugins\`.
+2. Start the game once and quit. In `Le Mans Ultimate\UserData\player\CustomPluginVariables.JSON`,
+   set `" Enabled": 1` for `rFactor2SharedMemoryMapPlugin64.dll`.
+3. Start the game again.
 
-Sprawdzenie bez kierownicy (w folderze projektu, po pierwszym uruchomieniu `.bat`):
-`pc\.venv\Scripts\python.exe pc\telemetria.py` wypisuje na żywo odczyty z gry.
+Checking without the wheel (in the project folder, after the first run of the `.bat`):
+`pc\.venv\Scripts\python.exe pc\telemetria.py` prints live readings from the game.
 
-## 5. Aktualizacja firmware z konfiguratora
+## 5. Firmware updates from the configurator
 
-Po pierwszym wgraniu przez Arduino IDE kolejne wersje wgrywa konfigurator: kliknij status połączenia
-(prawy górny róg) → **Aktualizacja firmware**. Gdy jest nowsza wersja, na stronie głównej pojawia się
-też pasek „Dostępna nowa wersja firmware”. Aktualizacja trwa ok. 30 s, idzie tym samym kablem USB,
-a ustawienia diod i układ przycisków zostają na komputerze.
+After the first upload from the Arduino IDE, the configurator installs new versions: click the
+connection status (top right) → "Aktualizacja firmware" (firmware update). When a newer version is
+available, the home page also shows a "new firmware available" bar. The update takes about 30 s, uses
+the same USB cable, and the LED settings and button layout stay on the computer.
 
-- Pliki firmware buduje **GitHub Actions** (`.github/workflows/firmware.yml`) przy każdej zmianie
-  w `esp32/`. Na gałęzi głównej powstaje wydanie `fw-<wersja>`, które konfigurator pobiera.
-  Żeby wydać nową wersję, podnieś `FW_VERSION` w `kierownica_gt.ino`.
-- **Wgraj z pliku .bin…** – plik z Arduino IDE (*Szkic → Eksportuj skompilowany plik binarny*,
-  najlepiej `kierownica_gt.ino.merged.bin`) albo pobrany z zakładki Releases na GitHubie.
-- Wgrywa narzędzie **esptool** (to samo co w Arduino IDE), instalowane automatycznie przez `.bat`.
-- Gdy wgrywanie nie może się połączyć: przytrzymaj **BOOT** na płytce, kliknij „Aktualizuj” i puść
-  BOOT, gdy pojawi się „Łączenie”.
+- The firmware files are built by **GitHub Actions** (`.github/workflows/firmware.yml`) on every change
+  in `esp32/`. On the main branch it creates an `fw-<version>` release, which the configurator downloads.
+  To release a new version, bump `FW_VERSION` in `gt_wheel.ino`.
+- **Upload from a .bin file…** – a file from the Arduino IDE (*Sketch → Export Compiled Binary*,
+  preferably `gt_wheel.ino.merged.bin`) or one downloaded from the Releases tab on GitHub.
+- The upload uses **esptool** (the same tool the Arduino IDE uses), installed automatically by the `.bat`.
+- If the upload can't connect: hold **BOOT** on the board, click "Aktualizuj" (update) and release
+  BOOT when "Łączenie" (connecting) appears.
 
-## 6. Uruchomienie
+## 6. Running
 
-Kliknij dwukrotnie **`Kierownica_GT.bat`**. Wymagany jest Python 3 z <https://python.org>, z
-zaznaczoną opcją *Add python.exe to PATH*.
-Przy pierwszym uruchomieniu skrypt utworzy `pc\.venv` i zainstaluje biblioteki.
+Double-click **`GT_Wheel.bat`**. Python 3 from <https://python.org> is required, installed with
+*Add python.exe to PATH* ticked.
+On the first run the script creates `pc\.venv` and installs the libraries.
 
-Program sam znajdzie port COM z kierownicą (wysyła `PING` na każdy port i czeka na odpowiedź),
-a potem wypisuje odczyty:
+The program finds the COM port with the wheel by itself (it sends `PING` to every port and waits for a
+reply), and then prints the readings (in Polish):
 
 ```
 [19:26:31] Polaczono z kierownica na porcie COM5 (12 przyciskow). Gotowe!
@@ -234,14 +249,16 @@ a potem wypisuje odczyty:
 [19:26:32] Przycisk 10 (pin GPIO18) wylaczony
 ```
 
-Po odłączeniu kabla wszystkie wirtualne przyciski zostają puszczone, a program szuka kierownicy od nowa.
+("Connected to the wheel on COM5 (12 buttons). Ready!", then button 10 pressed and released.)
 
-Opcje (można je dopisać do `.bat` albo podać w wierszu poleceń):
+When the cable is unplugged, all virtual buttons are released and the program searches for the wheel again.
+
+Options (add them to the `.bat` or pass them on the command line):
 
 ```
-Kierownica_GT.bat --backend xbox     # wymuś pad Xbox 360
-Kierownica_GT.bat --backend vjoy     # wymuś vJoy
-Kierownica_GT.bat --backend konsola  # tylko podgląd, bez emulacji
-Kierownica_GT.bat --port COM5        # pomiń autowykrywanie
-Kierownica_GT.bat --list             # lista portów COM
+GT_Wheel.bat --backend xbox     # force the Xbox 360 pad
+GT_Wheel.bat --backend vjoy     # force vJoy
+GT_Wheel.bat --backend konsola  # console preview only, no emulation
+GT_Wheel.bat --port COM5        # skip auto-detection
+GT_Wheel.bat --list             # list COM ports
 ```

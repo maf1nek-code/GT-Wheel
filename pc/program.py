@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Kierownica GT - ustawienia programu, autostart z Windows, ikona przy zegarze
-(zasobnik systemowy) i wirtualny kontroler do gier.
+GT Wheel - program settings, Windows autostart, the icon next to the clock
+(system tray) and the virtual game controller.
 
-Wszystko tutaj jest opcjonalne: jesli brakuje biblioteki (pystray / Pillow /
-vJoy) albo system nie jest Windows, program dziala dalej bez tej funkcji.
+Everything here is optional: if a library is missing (pystray / Pillow /
+vJoy) or the system isn't Windows, the program keeps running without that feature.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ KONTROLERY = {
 }
 
 DOMYSLNE = {
-    "po_zamknieciu": "tlo",        # "tlo" - dzialaj przy zegarze, "zakoncz" - zamknij program
+    "po_zamknieciu": "tlo",        # "tlo" - keep running next to the clock, "zakoncz" - quit the program
     "okno_przy_autostarcie": False,
     "kontroler": "auto",
     "vjoy_id": 1,
@@ -39,7 +39,7 @@ DOMYSLNE = {
 }
 
 
-# ============================================================ ustawienia
+# ============================================================== settings
 def popraw(u) -> dict:
     wynik = dict(DOMYSLNE)
     if not isinstance(u, dict):
@@ -76,7 +76,7 @@ def autostart_dostepny() -> bool:
 
 
 def polecenie_autostartu() -> str:
-    """pythonw.exe (bez czarnego okna) + konfigurator.py --tlo."""
+    """pythonw.exe (no black console window) + konfigurator.py --tlo."""
     python = Path(sys.executable)
     pythonw = python.with_name("pythonw.exe")
     exe = pythonw if pythonw.is_file() else python
@@ -96,7 +96,7 @@ def autostart_wlaczony() -> bool:
 
 
 def ustaw_autostart(wlacz: bool) -> None:
-    """Dopisuje / usuwa program z autostartu biezacego uzytkownika (bez uprawnien admina)."""
+    """Adds / removes the program from the current user's autostart (no admin rights needed)."""
     if not autostart_dostepny():
         raise ValueError("Autostart działa tylko w Windows.")
     import winreg
@@ -113,14 +113,14 @@ def ustaw_autostart(wlacz: bool) -> None:
 
 def otworz_folder(sciezka: Path = KATALOG) -> None:
     if sys.platform == "win32":
-        os.startfile(str(sciezka))   # noqa: S606 - folder programu
+        os.startfile(str(sciezka))   # noqa: S606 - program folder
     else:
         raise ValueError("Otwieranie folderu działa tylko w Windows.")
 
 
-# ============================================================= kontroler
+# ============================================================ controller
 def utworz_kontroler(rodzaj: str, vjoy_id: int):
-    """Zwraca (kontroler, opis, blad). Nigdy nie konczy programu."""
+    """Returns (controller, description, error). Never ends the program."""
     import kierownica as k
     bledy = []
     if rodzaj == "brak":
@@ -129,7 +129,7 @@ def utworz_kontroler(rodzaj: str, vjoy_id: int):
         try:
             b = k.VJoyBackend(vjoy_id)
             return b, f"vJoy (urządzenie {vjoy_id})", None
-        except Exception as exc:  # brak sterownika, urzadzenie zajete, brak biblioteki
+        except Exception as exc:  # no driver, device busy, library missing
             bledy.append(f"vJoy: {exc}")
             if rodzaj == "vjoy":
                 return k.Backend(), "brak", ("Nie udało się uruchomić vJoy – zainstaluj sterownik "
@@ -142,16 +142,16 @@ def utworz_kontroler(rodzaj: str, vjoy_id: int):
                                  "Przyciski nie trafią do gry.")
 
 
-# ======================================================== ikona przy zegarze
+# ================================================ icon next to the clock
 class Tacka:
-    """Ikona w zasobniku systemowym. Gdy brakuje pystray/Pillow - dostepna = False."""
+    """System tray icon. Without pystray/Pillow - dostepna (available) = False."""
 
     def __init__(self, otworz, zakoncz, przelacz_diody, diody_wlaczone) -> None:
         self.dostepna = False
         self._ikona = None
         self._otworz, self._zakoncz = otworz, zakoncz
         self._przelacz_diody, self._diody_wlaczone = przelacz_diody, diody_wlaczone
-        self._tekst = "Kierownica GT"
+        self._tekst = "GT Wheel"
         self._stan = "szukam"
         try:
             if importlib.util.find_spec("pystray") is None or \
@@ -163,7 +163,7 @@ class Tacka:
             return
         self.dostepna = True
 
-    # rysowana ikona: czerwony kwadrat z kierownica + kropka stanu polaczenia
+    # drawn icon: red square with a wheel + connection state dot
     @staticmethod
     def _obrazek(stan: str):
         from PIL import Image, ImageDraw
@@ -171,10 +171,10 @@ class Tacka:
         im = Image.new("RGBA", (r, r), (0, 0, 0, 0))
         d = ImageDraw.Draw(im)
         d.rounded_rectangle((2, 2, r - 3, r - 3), radius=14, fill=(255, 61, 46, 255))
-        d.ellipse((9, 9, 55, 55), outline="white", width=6)          # obrecz
-        d.line((12, 32, 52, 32), fill="white", width=6)                # szprychy
+        d.ellipse((9, 9, 55, 55), outline="white", width=6)          # rim
+        d.line((12, 32, 52, 32), fill="white", width=6)                # spokes
         d.line((32, 32, 32, 53), fill="white", width=6)
-        d.ellipse((24, 24, 40, 40), fill="white")                      # piasta
+        d.ellipse((24, 24, 40, 40), fill="white")                      # hub
         kolor = {"polaczono": (34, 197, 94), "zajety": (240, 68, 68)}.get(stan, (245, 165, 36))
         if stan == "rozlaczono":
             kolor = (140, 148, 160)
@@ -193,11 +193,11 @@ class Tacka:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Zakończ", lambda: self._zakoncz()),
         )
-        self._ikona = pystray.Icon("KierownicaGT", self._obrazek(self._stan), "Kierownica GT", menu)
+        self._ikona = pystray.Icon("KierownicaGT", self._obrazek(self._stan), "GT Wheel", menu)
         threading.Thread(target=self._ikona.run, daemon=True).start()
 
     def stan(self, stan: str, tekst: str) -> None:
-        self._tekst = f"Kierownica GT – {tekst}"
+        self._tekst = f"GT Wheel – {tekst}"
         if not self._ikona:
             return
         try:
@@ -209,7 +209,7 @@ class Tacka:
         except Exception:
             pass
 
-    def powiadom(self, tekst: str, tytul: str = "Kierownica GT") -> None:
+    def powiadom(self, tekst: str, tytul: str = "GT Wheel") -> None:
         if not self._ikona:
             return
         try:

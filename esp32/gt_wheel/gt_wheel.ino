@@ -1,93 +1,94 @@
 /*
   ===========================================================================
-   Kierownica GT - firmware ESP32 (ESP32-WROOM-32 / ESP32 DevKit)
+   GT Wheel - ESP32 firmware (ESP32-WROOM-32 / ESP32 DevKit)
   ===========================================================================
 
-   Co robi:
-     - czyta 12 przyciskow kierownicy (kazdy zwiera pin do GND),
-     - eliminuje drgania stykow (debounce),
-     - kazda zmiane wysyla na port szeregowy (USB), np.:
-           BTN 10 ON GPIO18   <- przycisk 10 wcisniety
-           BTN 10 OFF GPIO18  <- przycisk 10 puszczony
-     - co 1 s wysyla pelny stan wszystkich przyciskow:
+   What it does:
+     - reads the 12 wheel buttons (each one shorts a pin to GND),
+     - debounces the contacts,
+     - sends every change to the serial port (USB), e.g.:
+           BTN 10 ON GPIO18   <- button 10 pressed
+           BTN 10 OFF GPIO18  <- button 10 released
+     - sends the full state of all buttons every 1 s:
            STATE 000000000100
-     - odpowiada na komendy z PC (uzywa ich program w Pythonie):
-           PING    -> PONG KIEROWNICA_GT <wersja> <liczba_przyciskow> [LED <max_diod>]
+     - answers commands from the PC (used by the Python program):
+           PING    -> PONG KIEROWNICA_GT <version> <button_count> [LED <max_leds>]
            STATE?  -> STATE ....
-           INFO    -> lista przyciskow i pinow
-           LEDS RRGGBBRRGGBB...  -> kolory paska LED (6 znakow hex na diode)
-           LEDS               -> zgas pasek
-     - steruje paskiem LED WS2812B (obroty, efekty) - kolory liczy program
-       na PC, ESP32 tylko je wyswietla. Bez danych przez 3 s pasek gasnie.
+           INFO    -> list of buttons and pins
+           LEDS RRGGBBRRGGBB...  -> LED strip colours (6 hex characters per LED)
+           LEDS               -> turn the strip off
+     - drives a WS2812B LED strip (revs, effects) - the colours are computed
+       by the PC program, the ESP32 only displays them. The strip turns off
+       after 3 s without data.
 
    Arduino IDE:
-     Board Manager: pakiet "esp32" by Espressif Systems
-     Plytka:        "ESP32 Dev Module"
+     Board Manager: "esp32" package by Espressif Systems
+     Board:         "ESP32 Dev Module"
      Serial Monitor: 115200 baud
-     (Windows moze potrzebowac sterownika CP210x albo CH340 - zalezy od
-      ukladu USB na plytce)
+     (Windows may need the CP210x or CH340 driver, depending on the USB
+      chip on the board)
 
-   Podlaczenie przycisku:  GPIO ---[ przycisk ]--- GND
-   (wewnetrzny pull-up jest wlaczony, zaden rezystor nie jest potrzebny;
-    wspolny przewod GND podlacz do dowolnego pinu GND na plytce)
+   Button wiring:  GPIO ---[ button ]--- GND
+   (the internal pull-up is enabled, no resistor is needed;
+    connect the common GND wire to any GND pin on the board)
 
-   Dlaczego te piny - pominiete sa piny, ktore sprawiaja problemy:
-     GPIO 0, 2, 5, 12, 15  - piny "strapping" (wcisniety przycisk przy starcie
-                             moze zablokowac uruchomienie / wgrywanie)
-     GPIO 1, 3             - TX/RX portu szeregowego (USB)
-     GPIO 6..11            - pamiec flash, nie wolno ich uzywac
-     GPIO 34..39           - tylko wejscia, BEZ wewnetrznego pull-upa
-   Zapasowe dobre piny: GPIO 16, 17 (GPIO 13 zajety przez pasek LED).
+   Why these pins - pins that cause trouble are skipped:
+     GPIO 0, 2, 5, 12, 15  - strapping pins (a button held down at power-up
+                             can block booting / uploading)
+     GPIO 1, 3             - TX/RX of the serial port (USB)
+     GPIO 6..11            - flash memory, must not be used
+     GPIO 34..39           - input only, NO internal pull-up
+   Spare good pins: GPIO 16, 17 (GPIO 13 is used by the LED strip).
 
-   Pasek LED WS2812B (opcjonalny):
-     DIN  <- GPIO13 przez rezystor ok. 330 ohm
-     5V   <- pin VIN/5V plytki (przy zasilaniu z USB trzymaj niska jasnosc)
-     GND  <- GND plytki
-   Wymaga biblioteki "Adafruit NeoPixel" (Arduino IDE: Tools -> Manage
-   Libraries -> wpisz "Adafruit NeoPixel" -> Install).
-   Bez paska / biblioteki: ustaw LED_ENABLED na 0.
+   WS2812B LED strip (optional):
+     DIN  <- GPIO13 through a resistor of about 330 ohm
+     5V   <- the board's VIN/5V pin (keep the brightness low on USB power)
+     GND  <- board GND
+   Requires the "Adafruit NeoPixel" library (Arduino IDE: Tools -> Manage
+   Libraries -> type "Adafruit NeoPixel" -> Install).
+   Without a strip / the library: set LED_ENABLED to 0.
 */
 
-#define LED_ENABLED 1   // 1 = obsluga paska LED, 0 = wylaczona (bez biblioteki)
+#define LED_ENABLED 1   // 1 = LED strip support, 0 = off (no library needed)
 
 #include <Arduino.h>
 #if LED_ENABLED
 #include <Adafruit_NeoPixel.h>
 #endif
 
-// ----------------------------- ustawienia ---------------------------------
-const char*         DEVICE_ID    = "KIEROWNICA_GT";  // Python szuka tego napisu
+// ------------------------------ settings ----------------------------------
+const char*         DEVICE_ID    = "KIEROWNICA_GT";  // the Python program looks for this string
 const char*         FW_VERSION   = "1.1";
 const unsigned long BAUD_RATE    = 115200;
-const unsigned long DEBOUNCE_MS  = 15;    // czas stabilizacji styku
-const unsigned long HEARTBEAT_MS = 1000;  // co ile wysylac pelny stan
+const unsigned long DEBOUNCE_MS  = 15;    // contact settling time
+const unsigned long HEARTBEAT_MS = 1000;  // how often to send the full state
 
-const uint8_t       LED_PIN        = 13;    // DIN paska WS2812B
-const uint16_t      LED_MAX        = 60;    // maksymalna liczba diod
-const unsigned long LED_TIMEOUT_MS = 3000;  // brak danych z PC -> pasek gasnie
+const uint8_t       LED_PIN        = 13;    // WS2812B strip DIN
+const uint16_t      LED_MAX        = 60;    // maximum number of LEDs
+const unsigned long LED_TIMEOUT_MS = 3000;  // no data from the PC -> the strip turns off
 
 struct Button {
   uint8_t     pin;
   const char* pinName;
 };
 
-// Kolejnosc = numer przycisku (1..12) - zgodnie z opisami na kierownicy.
-// Lewa strona kierownicy -> lewa listwa plytki DevKit, prawa -> prawa.
+// Order = button number (1..12) - matches the labels on the wheel.
+// Left side of the wheel -> left header of the DevKit board, right -> right.
 //
-//  Przycisk | stary opis (Nano) | ESP32-WROOM-32 | strona plytki
+//   Button  | old label (Nano)  | ESP32-WROOM-32 | board side
 //  ---------+-------------------+----------------+--------------
-//      1    |       A3          |    GPIO32      |  lewa
-//      2    |       A2          |    GPIO33      |  lewa
-//      3    |       D8          |    GPIO25      |  lewa
-//      4    |       D10         |    GPIO26      |  lewa
-//      5    |       A1          |    GPIO27      |  lewa
-//      6    |      (GND)        |    GPIO23      |  prawa
-//      7    |      (VIN)        |    GPIO22      |  prawa
-//      8    |       A7          |    GPIO21      |  prawa
-//      9    |       A6          |    GPIO19      |  prawa
-//     10    |       A5          |    GPIO18      |  prawa
-//     11    |       D6          |    GPIO14      |  lewa
-//     12    |       D5          |    GPIO4       |  prawa
+//      1    |       A3          |    GPIO32      |  left
+//      2    |       A2          |    GPIO33      |  left
+//      3    |       D8          |    GPIO25      |  left
+//      4    |       D10         |    GPIO26      |  left
+//      5    |       A1          |    GPIO27      |  left
+//      6    |      (GND)        |    GPIO23      |  right
+//      7    |      (VIN)        |    GPIO22      |  right
+//      8    |       A7          |    GPIO21      |  right
+//      9    |       A6          |    GPIO19      |  right
+//     10    |       A5          |    GPIO18      |  right
+//     11    |       D6          |    GPIO14      |  left
+//     12    |       D5          |    GPIO4       |  right
 Button buttons[] = {
   { 32, "GPIO32" },  //  1
   { 33, "GPIO33" },  //  2
@@ -106,12 +107,12 @@ Button buttons[] = {
 const uint8_t NUM_BUTTONS = sizeof(buttons) / sizeof(buttons[0]);
 // --------------------------------------------------------------------------
 
-bool          stableState[NUM_BUTTONS];   // true = wcisniety (po debounce)
-bool          lastReading[NUM_BUTTONS];   // ostatni surowy odczyt
-unsigned long lastChangeMs[NUM_BUTTONS];  // kiedy surowy odczyt sie zmienil
+bool          stableState[NUM_BUTTONS];   // true = pressed (after debounce)
+bool          lastReading[NUM_BUTTONS];   // last raw reading
+unsigned long lastChangeMs[NUM_BUTTONS];  // when the raw reading changed
 unsigned long lastHeartbeatMs = 0;
 
-// Miesci "LEDS " + 60 diod * 6 znakow hex.
+// Fits "LEDS " + 60 LEDs * 6 hex characters.
 char     cmdBuf[16 + LED_MAX * 6];
 uint16_t cmdLen = 0;
 bool     cmdOverflow = false;
@@ -123,13 +124,13 @@ bool          ledsLit        = false;
 #endif
 
 inline bool readPressed(uint8_t i) {
-  // INPUT_PULLUP: puszczony = HIGH, wcisniety (zwarty do GND) = LOW
+  // INPUT_PULLUP: released = HIGH, pressed (shorted to GND) = LOW
   return digitalRead(buttons[i].pin) == LOW;
 }
 
-// Na ESP32-WROOM-32 (USB przez CP210x/CH340) zawsze true. Na plytkach z
-// natywnym USB (S2/S3) jest true tylko gdy PC ma otwarty port - wtedy nie
-// blokujemy petli, gdy nikt nie slucha.
+// Always true on the ESP32-WROOM-32 (USB through CP210x/CH340). On boards with
+// native USB (S2/S3) it is true only while the PC has the port open - so the
+// loop doesn't block when nobody is listening.
 inline bool hostConnected() {
   return (bool)Serial;
 }
@@ -192,14 +193,14 @@ void ledsOff() {
   ledsLit = false;
 }
 
-// hex = "RRGGBBRRGGBB..." (wielkie litery); diody bez danych gasna.
+// hex = "RRGGBBRRGGBB..." (upper case); LEDs without data turn off.
 void setLeds(const char* hex) {
   uint16_t len = strlen(hex);
   uint16_t count = len / 6;
   if (count > LED_MAX) count = LED_MAX;
 
   for (uint16_t i = 0; i < count * 6; i++) {
-    if (hexValue(hex[i]) < 0) return;  // uszkodzona ramka - zostaw poprzednia
+    if (hexValue(hex[i]) < 0) return;  // broken frame - keep the previous one
   }
 
   strip.clear();
@@ -250,7 +251,7 @@ void handleSerialInput() {
         processCommand(cmdBuf);
       }
       cmdLen      = 0;
-      cmdOverflow = false;  // za dluga linia jest odrzucana w calosci
+      cmdOverflow = false;  // a line that is too long is dropped as a whole
     } else if (cmdLen < sizeof(cmdBuf) - 1) {
       cmdBuf[cmdLen++] = c;
     } else {
@@ -260,14 +261,14 @@ void handleSerialInput() {
 }
 
 void setup() {
-  Serial.setRxBufferSize(1024);  // ramka LED dla 60 diod ma ~370 znakow
+  Serial.setRxBufferSize(1024);  // an LED frame for 60 LEDs is ~370 characters
   Serial.begin(BAUD_RATE);
 
   unsigned long now = millis();
   for (uint8_t i = 0; i < NUM_BUTTONS; i++) {
     pinMode(buttons[i].pin, INPUT_PULLUP);
   }
-  delay(5);  // chwila na ustabilizowanie pull-upow
+  delay(5);  // give the pull-ups a moment to settle
 
 #if LED_ENABLED
   strip.begin();
@@ -280,7 +281,7 @@ void setup() {
     lastChangeMs[i] = now;
   }
 
-  // Krotko czekamy na otwarcie portu (max 1.5 s), zeby przywitanie nie zginelo.
+  // Wait briefly for the port to open (max 1.5 s) so the greeting isn't lost.
   unsigned long start = millis();
   while (!Serial && millis() - start < 1500) {
     delay(10);
@@ -316,7 +317,7 @@ void loop() {
   }
 
 #if LED_ENABLED
-  // PC przestal wysylac (program zamkniety, kabel) - gasimy pasek.
+  // The PC stopped sending (program closed, cable) - turn the strip off.
   if (ledsLit && millis() - lastLedFrameMs >= LED_TIMEOUT_MS) {
     ledsOff();
   }

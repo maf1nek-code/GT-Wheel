@@ -1,14 +1,14 @@
 @echo off
 REM ==========================================================
-REM  Kierownica GT - uruchamia most ESP32 -> kontroler do gier
-REM  Przy pierwszym uruchomieniu tworzy srodowisko Pythona
-REM  (folder pc\.venv) i instaluje potrzebne biblioteki.
-REM  Dodatkowe parametry przekazywane sa dalej, np.:
-REM     Kierownica_GT.bat --backend xbox
-REM     Kierownica_GT.bat --port COM5
+REM  GT Wheel - runs the ESP32 -> game controller bridge
+REM  On the first run it creates a Python environment
+REM  (folder pc\.venv) and installs the required libraries.
+REM  Extra parameters are passed on, e.g.:
+REM     GT_Wheel.bat --backend xbox
+REM     GT_Wheel.bat --port COM5
 REM ==========================================================
 setlocal
-title Kierownica GT
+title GT Wheel
 cd /d "%~dp0pc"
 
 set "VENV_PY=.venv\Scripts\python.exe"
@@ -37,7 +37,7 @@ if errorlevel 1 (
 )
 
 :check_deps
-REM Biblioteki instaluja sie ponownie, gdy zmieni sie requirements.txt (np. po aktualizacji)
+REM The libraries are reinstalled when requirements.txt changes (e.g. after an update)
 fc /b requirements.txt ".venv\zainstalowane.txt" >nul 2>&1
 if not errorlevel 1 goto run
 

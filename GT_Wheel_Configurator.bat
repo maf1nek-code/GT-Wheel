@@ -1,14 +1,14 @@
 @echo off
 REM ==========================================================
-REM  Kierownica GT - konfigurator i program w tle (ikona przy zegarze)
-REM  Przy pierwszym uruchomieniu tworzy srodowisko Pythona
-REM  (folder pc\.venv) i instaluje potrzebne biblioteki.
-REM  Przed uruchomieniem zamknij Kierownica_GT.bat (port COM
-REM  moze miec otwarty tylko jeden program). Parametry, np.:
-REM     Konfigurator_GT.bat --port COM5
+REM  GT Wheel - configurator and background program (icon next to the clock)
+REM  On the first run it creates a Python environment
+REM  (folder pc\.venv) and installs the required libraries.
+REM  Close GT_Wheel.bat before starting (only one program can
+REM  hold the COM port). Parameters, e.g.:
+REM     GT_Wheel_Configurator.bat --port COM5
 REM ==========================================================
 setlocal
-title Kierownica GT - konfigurator
+title GT Wheel - configurator
 cd /d "%~dp0pc"
 
 set "VENV_PY=.venv\Scripts\python.exe"
@@ -37,7 +37,7 @@ if errorlevel 1 (
 )
 
 :check_deps
-REM Biblioteki instaluja sie ponownie, gdy zmieni sie requirements.txt (np. po aktualizacji)
+REM The libraries are reinstalled when requirements.txt changes (e.g. after an update)
 fc /b requirements.txt ".venv\zainstalowane.txt" >nul 2>&1
 if not errorlevel 1 goto run
 
@@ -53,8 +53,8 @@ if errorlevel 1 (
 copy /y requirements.txt ".venv\zainstalowane.txt" >nul
 
 :run
-REM Program dziala w tle (ikona przy zegarze), wiec uruchamiamy go bez okna konsoli.
-REM Komunikaty trafiaja do pliku pc\kierownica_gt.log.
+REM The program runs in the background (icon next to the clock), so it starts without a console window.
+REM Messages go to pc\kierownica_gt.log.
 set "VENV_PYW=.venv\Scripts\pythonw.exe"
 if not exist "%VENV_PYW%" set "VENV_PYW=%VENV_PY%"
 start "" "%VENV_PYW%" konfigurator.py %*

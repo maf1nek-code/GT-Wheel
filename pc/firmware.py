@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Kierownica GT - aktualizacja firmware ESP32 z konfiguratora.
+GT Wheel - ESP32 firmware updates from the configurator.
 
-* sprawdz_github()  - najnowsze wydanie "fw-<wersja>" w repozytorium projektu
-                      (buduje je GitHub Actions: .github/workflows/firmware.yml)
-* pobierz()         - pobiera plik .bin
-* rozpoznaj()       - sprawdza plik i zwraca adres w pamieci flash
-* wgraj()           - wgrywa przez esptool (to samo narzedzie, ktorego uzywa Arduino IDE)
+* sprawdz_github()  - latest "fw-<version>" release in the project repository
+                      (built by GitHub Actions: .github/workflows/firmware.yml)
+* pobierz()         - downloads the .bin file
+* rozpoznaj()       - checks the file and returns its flash address
+* wgraj()           - uploads it with esptool (the same tool the Arduino IDE uses)
 """
 
 from __future__ import annotations
@@ -23,23 +23,23 @@ REPOZYTORIUM = "maf1nek-code/Kierownica-gt"
 API_WYDAN = f"https://api.github.com/repos/{REPOZYTORIUM}/releases?per_page=30"
 USER_AGENT = "KierownicaGT-konfigurator"
 MAX_ROZMIAR = 8 * 1024 * 1024
-MAGIA_OBRAZU = 0xE9             # pierwszy bajt obrazu ESP32 (bootloader / program)
-ADRES_BOOTLOADERA = 0x1000      # ESP32 (klasyczny)
-ADRES_PROGRAMU = 0x10000        # domyslny podzial pamieci "ESP32 Dev Module"
+MAGIA_OBRAZU = 0xE9             # first byte of an ESP32 image (bootloader / program)
+ADRES_BOOTLOADERA = 0x1000      # ESP32 (classic)
+ADRES_PROGRAMU = 0x10000        # default partition table of the "ESP32 Dev Module"
 
 
 class BladFirmware(Exception):
-    """Blad z komunikatem po polsku, do pokazania uzytkownikowi."""
+    """An error with a Polish message, meant to be shown to the user."""
 
 
 def wersja_krotka(tekst: str | None) -> tuple:
-    """'1.10' -> (1, 10); smieci -> ()."""
+    """'1.10' -> (1, 10); garbage -> ()."""
     liczby = re.findall(r"\d+", str(tekst or ""))
     return tuple(int(x) for x in liczby[:4])
 
 
 def nowsza(a: str | None, b: str | None) -> bool:
-    """Czy wersja a jest nowsza niz b."""
+    """Whether version a is newer than b."""
     return wersja_krotka(a) > wersja_krotka(b)
 
 
@@ -48,7 +48,7 @@ def _zapytanie(url: str, akceptuj: str) -> urllib.request.Request:
 
 
 def sprawdz_github(limit_s: float = 8.0) -> dict | None:
-    """Najnowszy firmware z wydan GitHuba albo None, gdy zadnego jeszcze nie ma."""
+    """The latest firmware from the GitHub releases, or None if there is none yet."""
     try:
         with urllib.request.urlopen(_zapytanie(API_WYDAN, "application/vnd.github+json"),
                                     timeout=limit_s) as odp:
@@ -75,8 +75,8 @@ def sprawdz_github(limit_s: float = 8.0) -> dict | None:
         kandydat = {
             "wersja": tag[3:],
             "nazwa": plik["name"],
-            # adres przez API (z Accept: application/octet-stream) - dziala tez tam,
-            # gdzie bezposrednie linki github.com/.../releases/download sa blokowane
+            # download through the API (with Accept: application/octet-stream) - this also works
+            # where direct github.com/.../releases/download links are blocked
             "url": plik.get("url") or plik["browser_download_url"],
             "rozmiar": plik.get("size", 0),
             "data": str(w.get("published_at", ""))[:10],
@@ -112,19 +112,19 @@ def pobierz(url: str, postep=None, limit_s: float = 30.0) -> bytes:
 
 
 def rozpoznaj(dane: bytes) -> int:
-    """Adres, pod ktory nalezy wgrac plik. Odrzuca pliki, ktore nie sa firmware ESP32."""
+    """The address to flash the file at. Rejects files that are not ESP32 firmware."""
     if len(dane) > MAX_ROZMIAR:
         raise BladFirmware("Plik jest za duży jak na firmware.")
-    # plik "merged" (Arduino IDE 2: Szkic -> Eksportuj skompilowany plik binarny,
-    # albo wydanie z GitHuba): bootloader + podzial pamieci + program, od adresu 0
+    # "merged" file (Arduino IDE 2: Sketch -> Export Compiled Binary,
+    # or a GitHub release): bootloader + partition table + program, from address 0
     if len(dane) > ADRES_PROGRAMU + 1024 and dane[0] == 0xFF and \
             dane[ADRES_BOOTLOADERA] == MAGIA_OBRAZU and dane[ADRES_PROGRAMU] == MAGIA_OBRAZU:
         return 0x0
-    # sam program (kierownica_gt.ino.bin)
+    # the program alone (gt_wheel.ino.bin)
     if len(dane) > 64 * 1024 and dane[0] == MAGIA_OBRAZU:
         return ADRES_PROGRAMU
     raise BladFirmware("To nie wygląda na firmware ESP32. Wybierz plik "
-                       "kierownica_gt.ino.merged.bin albo kierownica_gt.ino.bin.")
+                       "gt_wheel.ino.merged.bin albo gt_wheel.ino.bin.")
 
 
 def esptool_dostepny() -> bool:
@@ -138,16 +138,16 @@ def _podpowiedz(log: str) -> str:
                 "„Aktualizuj” jeszcze raz i puść BOOT, gdy pojawi się „Łączenie”.")
     if "could not open port" in tekst or "permissionerror" in tekst or "access is denied" in tekst:
         return ("Nie można otworzyć portu – kierownica jest odłączona albo port zajmuje inny program "
-                "(zamknij Kierownica_GT.bat i Serial Monitor).")
+                "(zamknij GT_Wheel.bat i Serial Monitor).")
     if "a fatal error occurred" in tekst:
         return "esptool zgłosił błąd – szczegóły w dzienniku poniżej."
     return "Wgrywanie nie powiodło się – szczegóły w dzienniku poniżej."
 
 
 def wgraj(port: str, plik: str, adres: int, postep, linia_logu) -> None:
-    """Wgrywa plik. postep(procent, tekst) i linia_logu(tekst) sa wolane w trakcie."""
+    """Uploads the file. postep(percent, text) and linia_logu(text) are called along the way."""
     if not esptool_dostepny():
-        raise BladFirmware("Brak narzędzia esptool. Uruchom ponownie Konfigurator_GT.bat – "
+        raise BladFirmware("Brak narzędzia esptool. Uruchom ponownie GT_Wheel_Configurator.bat – "
                            "zainstaluje je samo.")
     polecenie = [sys.executable, "-m", "esptool", "--chip", "esp32", "--port", port,
                  "--baud", "460800", "--before", "default_reset", "--after", "hard_reset",

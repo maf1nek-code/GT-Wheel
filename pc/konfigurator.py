@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Kierownica GT - konfigurator.
+GT Wheel - configurator.
 
-Program w tle obsluguje kierownice (port COM) i liczy efekty LED, a interfejs
-jest strona w folderze pc/ui, otwierana w osobnym oknie (Microsoft Edge /
-Chrome w trybie aplikacji, bez paskow przegladarki).
+The background program handles the wheel (COM port) and computes the LED effects,
+and the interface is a page in pc/ui, opened in its own window (Microsoft Edge /
+Chrome in app mode, without browser bars).
 
-  * Test przyciskow - na zywo, na rysunku kierownicy.
-  * Diody LED       - kolory, progi obrotow, efekty, podglad, profile.
+  * Button test - live, on a drawing of the wheel.
+  * LEDs        - colours, rev thresholds, effects, preview, profiles.
 
-Program dziala tez w tle (ikona przy zegarze): trzyma polaczenie z kierownica,
-przekazuje przyciski do gry (vJoy / pad Xbox) i steruje diodami z telemetrii.
-Okno konfiguratora otwiera sie tylko na zadanie.
+The program also runs in the background (icon next to the clock): it keeps the
+connection to the wheel, passes the buttons to games (vJoy / Xbox pad) and drives
+the LEDs from telemetry. The configurator window opens only on request.
 
-Uruchomienie: Konfigurator_GT.bat  albo  python konfigurator.py [opcje]
-  --tlo              start w tle, bez okna (tak uruchamia autostart Windows)
-  --port COM5        konkretny port (domyslnie: automatycznie)
-  --bez-okna         nie otwieraj okna (adres wypisze sie w konsoli)
-  --zostaw           nie koncz programu po zamknieciu okna
+Usage: GT_Wheel_Configurator.bat  or  python konfigurator.py [options]
+  --tlo              start in the background without a window (used by Windows autostart)
+  --port COM5        a specific port (default: automatic)
+  --bez-okna         don't open the window (the address is printed in the console)
+  --zostaw           don't quit when the window is closed
 
-Drugie uruchomienie nie startuje drugiej kopii - otwiera okno juz dzialajacej.
+Starting it again doesn't launch a second copy - it opens the running one's window.
 """
 
 from __future__ import annotations
@@ -59,13 +59,13 @@ from kierownica import list_candidate_ports, probe
 KATALOG = Path(__file__).resolve().parent
 KATALOG_UI = KATALOG / "ui"
 KATALOG_PROFILI = KATALOG / "profile_led"
-PLIK_UKLADU = KATALOG / "uklad_kierownicy.json"   # ktory przycisk jest w ktorym miejscu rysunku
+PLIK_UKLADU = KATALOG / "uklad_kierownicy.json"   # which button sits where on the drawing
 PREFEROWANY_PORT_HTTP = 47823
 
-SILENCE_TIMEOUT_S = 5.0     # ESP wysyla STATE co 1 s - cisza = rozlaczenie
-RETRY_S = 2.0               # co ile szukac kierownicy, gdy jej nie ma
+SILENCE_TIMEOUT_S = 5.0     # the ESP sends STATE every 1 s - silence = disconnected
+RETRY_S = 2.0               # how often to look for the wheel when it's not connected
 FPS = 30
-ZAMKNIJ_PO_S = 6.0          # bez otwartego okna przez tyle sekund -> koniec
+ZAMKNIJ_PO_S = 6.0          # no open window for this many seconds -> quit
 
 TYPY_PLIKOW = {
     ".html": "text/html; charset=utf-8",
@@ -97,10 +97,10 @@ def _hex_paska(kolory: list) -> str:
     return "".join("{:02x}{:02x}{:02x}".format(*k) for k in kolory)
 
 
-# ============================== stan programu ==============================
+# ============================== program state ==============================
 
 class Rozglosnia:
-    """Lista otwartych okien (polaczen SSE) i wysylanie im wiadomosci."""
+    """List of open windows (SSE connections) and sending messages to them."""
 
     def __init__(self) -> None:
         self._klienci: list[queue.Queue] = []
@@ -133,7 +133,7 @@ class Rozglosnia:
         for q in klienci:
             try:
                 if not wazne and q.qsize() > 60:
-                    continue      # wolne okno - pomin klatke podgladu, nie zdarzenie
+                    continue      # slow window - drop a preview frame, never an event
                 q.put_nowait(tekst)
             except queue.Full:
                 pass
@@ -145,7 +145,7 @@ class Aplikacja:
         self.radio = Rozglosnia()
         self.koniec = threading.Event()
 
-        # ustawienia LED
+        # LED settings
         self.blad_wczytania = None
         try:
             self.u = fx.wczytaj()
@@ -155,15 +155,15 @@ class Aplikacja:
         self._zapisane = _klucz_ustawien(self.u)
         self.profil: str | None = None
 
-        # symulacja w podgladzie
-        # domyslnie "gra": pasek pokazuje gre (albo oczekiwanie na nia), a nie petle symulacji
+        # simulation in the preview
+        # default "gra" (game): the strip shows the game (or waiting for it), not the simulation loop
         self.sim = {"stan": "gra", "obroty": 0.0, "auto": True, "wysylaj": True}
-        self._start_animacji: float | None = None   # animacja startowa (po podlaczeniu kierownicy)
+        self._start_animacji: float | None = None   # start-up animation (after the wheel connects)
         self._t0 = time.monotonic()
         self.czytnik = telemetria.Czytnik()
         self.gra = telemetria.Stan()
 
-        # kierownica
+        # wheel
         self.port_wybrany = port
         self.chce_polaczenia = True
         self.gen = 0
@@ -175,28 +175,28 @@ class Aplikacja:
         self.piny: dict[int, str] = {}
         self.bity = ""
 
-        # aktualizacja firmware
+        # firmware update
         self.fw = {"stan": "bezczynny", "procent": 0, "tekst": "", "log": []}
         self.fw_najnowsza: dict | None = None
         self.fw_blad: str | None = None
 
-        # program w tle: ustawienia, kontroler do gier, ikona przy zegarze
+        # background program: settings, game controller, icon next to the clock
         self.prog = program.wczytaj()
         self.kontroler, self.kontroler_opis, self.kontroler_blad = program.utworz_kontroler(
             self.prog["kontroler"], self.prog["vjoy_id"])
         self._kontroler_lock = threading.Lock()
         self.tacka: program.Tacka | None = None
-        self.otworz_okno_cb = None       # ustawiane w main()
+        self.otworz_okno_cb = None       # set in main()
         self.zakoncz_cb = None
 
-        # wysylanie na pasek
+        # sending to the strip
         self._ser_lock = threading.Lock()
         self._ostatnia_linia = ""
         self._ostatnie_wyslanie = 0.0
         self._pasek_zapalony = False
         self.status_paska = "brak"
 
-    # ------------------------------------------------------------- ustawienia
+    # --------------------------------------------------------------- settings
     @property
     def niezapisane(self) -> bool:
         return _klucz_ustawien(self.u) != self._zapisane
@@ -219,7 +219,7 @@ class Aplikacja:
         with self.lock:
             self.u = fx.wczytaj() if fx.PLIK_USTAWIEN.exists() else fx.domyslne_ustawienia()
 
-    # --------------------------------------------------------------- profile
+    # --------------------------------------------------------------- profiles
     @staticmethod
     def popraw_nazwe(nazwa) -> str:
         nazwa = re.sub(r"\s+", " ", str(nazwa)).strip()
@@ -245,7 +245,7 @@ class Aplikacja:
                 wynik.append({"nazwa": p.stem, "kolory": [], "liczba": 0, "blad": True})
         return wynik
 
-    # --------------------------------------------------------- uklad rysunku
+    # --------------------------------------------------------- drawing layout
     @staticmethod
     def wczytaj_uklad() -> dict | None:
         try:
@@ -268,7 +268,7 @@ class Aplikacja:
                 wynik[k] = v
         return wynik
 
-    # ------------------------------------------------------ aktualizacja firmware
+    # -------------------------------------------------------- firmware update
     @property
     def fw_trwa(self) -> bool:
         return self.fw["stan"] in ("pobieranie", "wgrywanie", "restart")
@@ -292,7 +292,7 @@ class Aplikacja:
                            "blad": self.fw_blad})
 
     def fw_start(self, dane: bytes | None, nazwa: str) -> None:
-        """dane=None -> najnowsze wydanie z GitHuba; inaczej plik wybrany przez uzytkownika."""
+        """dane=None -> the latest GitHub release; otherwise a file chosen by the user."""
         with self.lock:
             if self.fw_trwa:
                 raise ValueError("Aktualizacja już trwa.")
@@ -326,7 +326,7 @@ class Aplikacja:
                 t.write(dane)
                 plik = t.name
 
-            # zwolnij port - esptool musi go otworzyc sam
+            # release the port - esptool has to open it itself
             self._fw(stan="wgrywanie", procent=0, tekst="Zwalnianie portu…")
             self.rozlacz()
             zwolniony = True
@@ -359,7 +359,7 @@ class Aplikacja:
             self._fw(stan="blad", tekst=str(exc), linia=f"BŁĄD: {exc}")
             if zwolniony:
                 self.polacz(port)
-        except Exception as exc:  # nie zostawiaj okna w stanie "trwa"
+        except Exception as exc:  # don't leave the window in the "in progress" state
             self._fw(stan="blad", tekst=f"Nieoczekiwany błąd: {exc!r}", linia=repr(exc))
             if zwolniony:
                 self.polacz(port)
@@ -370,7 +370,7 @@ class Aplikacja:
                 except OSError:
                     pass
 
-    # ------------------------------------------------------------- migawka
+    # --------------------------------------------------------------- snapshot
     def migawka(self) -> dict:
         with self.lock:
             return {
@@ -405,7 +405,7 @@ class Aplikacja:
                                "niezapisane": self.niezapisane, "profil": self.profil,
                                "profile": self.profile()})
 
-    # ============================ kierownica ==============================
+    # =============================== wheel ================================
     def _status_dane(self) -> dict:
         d = dict(self.status)
         d["port_wybrany"] = self.port_wybrany
@@ -440,7 +440,7 @@ class Aplikacja:
             self.tacka.powiadom(f"Dostępna nowa wersja firmware {naj['wersja']} "
                                 f"(masz {info.version}). Otwórz konfigurator, aby zaktualizować.")
 
-    # ---------------------------------------------------- program w tle
+    # ------------------------------------------------- background program
     def program_dane(self) -> dict:
         return {
             "ustawienia": self.prog,
@@ -468,7 +468,7 @@ class Aplikacja:
                 self.kontroler.close()
                 self.kontroler, self.kontroler_opis, self.kontroler_blad = \
                     program.utworz_kontroler(self.prog["kontroler"], self.prog["vjoy_id"])
-                for i, ch in enumerate(self.bity, start=1):   # przenies aktualny stan przyciskow
+                for i, ch in enumerate(self.bity, start=1):   # carry over the current button state
                     if ch == "1":
                         self.kontroler.set_button(i, True)
             log(f"Kontroler do gier: {self.kontroler_opis}")
@@ -479,11 +479,11 @@ class Aplikacja:
     def przycisk_do_gry(self, numer: int, wcisniety: bool) -> None:
         with self._kontroler_lock:
             k = self.kontroler
-            if (numer in k._pressed) == wcisniety:   # bez zmian - nie wysylaj ponownie
+            if (numer in k._pressed) == wcisniety:   # unchanged - don't send again
                 return
             try:
                 k.set_button(numer, wcisniety)
-            except Exception as exc:   # np. vJoy odlaczony w trakcie
+            except Exception as exc:   # e.g. vJoy disconnected meanwhile
                 log(f"Kontroler: {exc!r}")
 
     def pusc_przyciski(self) -> None:
@@ -568,7 +568,7 @@ class Aplikacja:
                 self.piny = {}
                 self.bity = ""
                 self._ostatnia_linia = ""
-            self._start_animacji = time.monotonic()   # powitanie: animacja startowa na pasku
+            self._start_animacji = time.monotonic()   # greeting: start-up animation on the strip
             self._ustaw_status("polaczono", f"Połączono ({nazwa})", port=nazwa)
             log(f"Polaczono z kierownica na porcie {nazwa} (firmware {info.version}, "
                 f"{info.n_buttons} przyciskow, LED: {info.max_leds or 'brak'}).")
@@ -576,7 +576,7 @@ class Aplikacja:
             self.wyslij_do_kierownicy("STATE?")
 
             powod = self._czytaj(ser, gen)
-            self.pusc_przyciski()      # nic nie moze zostac "wcisniete" w grze
+            self.pusc_przyciski()      # nothing may stay "pressed" in the game
 
             if self._pasek_zapalony:
                 self.wyslij_do_kierownicy("LEDS")
@@ -596,7 +596,7 @@ class Aplikacja:
                 self.zmiana.clear()
 
     def _czytaj(self, ser, gen: int) -> str | None:
-        """Czyta port do rozlaczenia. Zwraca powod utraty albo None (rozlaczone celowo)."""
+        """Reads the port until it disconnects. Returns the reason, or None (disconnected on purpose)."""
         ostatnio = time.monotonic()
         piny_info: dict[int, str] = {}
         try:
@@ -627,7 +627,7 @@ class Aplikacja:
                 elif cz[0] == "STATE" and len(cz) >= 2:
                     with self.lock:
                         self.bity = cz[1]
-                    for i, ch in enumerate(cz[1], start=1):   # naprawia zgubione komunikaty
+                    for i, ch in enumerate(cz[1], start=1):   # recovers from lost messages
                         if ch in "01":
                             self.przycisk_do_gry(i, ch == "1")
                     self.radio.wyslij({"t": "stan", "bity": cz[1]})
@@ -644,10 +644,10 @@ class Aplikacja:
             return str(exc) or "port zamknięty"
         return None
 
-    # ============================== animacja ===============================
+    # ============================== animation ==============================
     @staticmethod
     def _telemetria(stan: str, obroty: float, t: float = 0.0) -> fx.Telemetria:
-        if stan == "spotter":            # na zmiane: auto z lewej, z prawej, z obu stron
+        if stan == "spotter":            # alternating: car on the left, on the right, on both sides
             faza = int(t / 1.2) % 3
             return fx.Telemetria(obroty=obroty, auto_lewo=faza != 1, auto_prawo=faza != 0)
         return fx.Telemetria(
@@ -664,7 +664,7 @@ class Aplikacja:
             nastepna += krok
             try:
                 self._klatka()
-            except Exception as exc:  # nie zatrzymuj podgladu przez jeden blad
+            except Exception as exc:  # don't stop the preview because of one error
                 log(f"Blad podgladu: {exc!r}")
             opoznienie = nastepna - time.monotonic()
             if opoznienie > 0:
@@ -684,7 +684,7 @@ class Aplikacja:
         t = time.monotonic() - self._t0
         self.gra = self.czytnik.odczyt()
         if self.radio.liczba == 0:
-            # okno zamkniete - program w tle: diody pokazuja gre (jak w czasie jazdy)
+            # window closed - background program: the LEDs show the game (as while driving)
             with self.lock:
                 u = fx.popraw_ustawienia(self.u)
             powitanie = self._animacja(u)
@@ -740,7 +740,7 @@ class Aplikacja:
 
         linia = fx.komenda_leds(fx.z_jasnoscia(kolory[:info.max_leds], u["jasnosc"]))
         teraz = time.monotonic()
-        # ~70% przepustowosci 115200 bodow: przy 60 diodach ok. 20 klatek/s
+        # ~70% of 115200 baud: about 20 frames/s with 60 LEDs
         if teraz - self._ostatnie_wyslanie < max(1.0 / FPS, len(linia) / 8000.0):
             return
         if linia == self._ostatnia_linia and teraz - self._ostatnie_wyslanie < 1.0:
@@ -792,12 +792,12 @@ def stworz_obsluge(app: Aplikacja, port_http: list):
         server_version = "KierownicaGT"
         protocol_version = "HTTP/1.1"
 
-        def log_message(self, *args) -> None:  # bez zasmiecania konsoli
+        def log_message(self, *args) -> None:  # keep the console clean
             pass
 
-        # ---------------------------------------------------------- pomocnicze
+        # ---------------------------------------------------------------- helpers
         def _host_ok(self) -> bool:
-            # chroni przed stronami z internetu, ktore probowalyby sterowac konfiguratorem
+            # protects against websites that would try to control the configurator
             host = (self.headers.get("Host") or "").lower()
             return host in (f"127.0.0.1:{port_http[0]}", f"localhost:{port_http[0]}")
 
@@ -877,7 +877,7 @@ def stworz_obsluge(app: Aplikacja, port_http: list):
                         porcja = ": ping\n\n"
                     self.wfile.write(porcja.encode("utf-8"))
                     self.wfile.flush()
-            except OSError:   # okno zamkniete / odswiezone
+            except OSError:   # window closed / reloaded
                 pass
             finally:
                 app.radio.usun(q)
@@ -1080,10 +1080,10 @@ def stworz_obsluge(app: Aplikacja, port_http: list):
     return Obsluga
 
 
-# ============================= okno programu ===============================
+# ============================= program window ==============================
 
 def znajdz_przegladarke() -> str | None:
-    """Edge albo Chrome - potrafia otworzyc strone jako osobne okno aplikacji."""
+    """Edge or Chrome - both can open a page as a separate app window."""
     kandydaci: list[Path] = []
     if sys.platform == "win32":
         for zmienna in ("PROGRAMFILES(X86)", "PROGRAMFILES", "LOCALAPPDATA"):
@@ -1132,7 +1132,7 @@ def wolny_port() -> int:
 
 
 def dzialajaca_kopia(port: int) -> bool:
-    """Czy na tym porcie dziala juz Kierownica GT. Jesli tak - kaze jej pokazac okno."""
+    """Whether GT Wheel is already running on this port. If so, tells it to show its window."""
     import http.client
     try:
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=1.5)
@@ -1149,14 +1149,14 @@ def dzialajaca_kopia(port: int) -> bool:
 
 
 def przekieruj_wyjscie() -> None:
-    """pythonw (autostart) nie ma konsoli - komunikaty ida do pliku kierownica_gt.log."""
+    """pythonw (autostart) has no console - messages go to kierownica_gt.log."""
     if sys.stdout is not None and sys.stderr is not None:
         return
     plik = program.KATALOG / "kierownica_gt.log"
     try:
         if plik.exists() and plik.stat().st_size > 1_000_000:
             plik.unlink()
-        f = open(plik, "a", encoding="utf-8", buffering=1)  # noqa: SIM115 - przez caly czas
+        f = open(plik, "a", encoding="utf-8", buffering=1)  # noqa: SIM115 - kept open the whole time
         sys.stdout = sys.stdout or f
         sys.stderr = sys.stderr or f
     except OSError:
@@ -1165,7 +1165,7 @@ def przekieruj_wyjscie() -> None:
 
 def main() -> None:
     przekieruj_wyjscie()
-    ap = argparse.ArgumentParser(description="Kierownica GT - konfigurator")
+    ap = argparse.ArgumentParser(description="GT Wheel - konfigurator")
     ap.add_argument("--port", help="konkretny port, np. COM5 (domyślnie: automatycznie)")
     ap.add_argument("--tlo", action="store_true",
                     help="start w tle, bez okna (ikona przy zegarze) - używa tego autostart")
@@ -1179,9 +1179,9 @@ def main() -> None:
     except Exception:
         pass
 
-    # tylko jedna kopia: kolejne uruchomienie otwiera okno juz dzialajacego programu
+    # single instance: starting it again opens the running program's window
     if not args.http and dzialajaca_kopia(PREFEROWANY_PORT_HTTP):
-        log("Kierownica GT juz dziala - otwieram jej okno.")
+        log("GT Wheel juz dziala - otwieram jej okno.")
         return
 
     app = Aplikacja(args.port)
@@ -1209,17 +1209,17 @@ def main() -> None:
 
     threading.Thread(target=app.watek_kierownicy, daemon=True).start()
     threading.Thread(target=app.watek_animacji, daemon=True).start()
-    threading.Thread(target=app.fw_sprawdz, daemon=True).start()   # czy jest nowszy firmware
+    threading.Thread(target=app.fw_sprawdz, daemon=True).start()   # is there newer firmware
 
     def straznik() -> None:
-        """Po zamknieciu okna: zostan przy zegarze albo zakoncz (wg ustawien)."""
+        """After the window closes: stay next to the clock or quit (per the settings)."""
         start = time.monotonic()
         while not app.koniec.is_set():
             time.sleep(1.0)
             if args.zostaw or args.tlo and not app.radio.byl_ktos or app.radio.liczba > 0:
                 continue
             if app.tacka and app.prog["po_zamknieciu"] == "tlo":
-                continue      # dziala dalej w tle - konczy sie z menu ikony
+                continue      # keeps running in the background - quit from the icon menu
             odkad = app.radio.ostatnio_ktos if app.radio.byl_ktos else start
             limit = ZAMKNIJ_PO_S if app.radio.byl_ktos else 120.0
             if time.monotonic() - odkad > limit:
@@ -1230,12 +1230,12 @@ def main() -> None:
     threading.Thread(target=straznik, daemon=True).start()
 
     print("=" * 60)
-    print("  KIEROWNICA GT  -  konfigurator")
+    print("  GT WHEEL  -  konfigurator")
     print("=" * 60)
     log(f"Okno konfiguratora: {adres}")
     log(f"Kontroler do gier: {app.kontroler_opis}")
     if app.tacka:
-        log("Program dziala tez przy zegarze (ikona Kierownica GT). Konczy sie z jej menu.")
+        log("Program dziala tez przy zegarze (ikona GT Wheel). Konczy sie z jej menu.")
     else:
         log("Zamknij okno konfiguratora, aby zakonczyc (albo Ctrl+C tutaj).")
     otworz_teraz = not args.bez_okna and (not args.tlo or app.prog["okno_przy_autostarcie"])

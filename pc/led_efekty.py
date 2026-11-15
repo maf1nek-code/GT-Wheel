@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-Kierownica GT - efekty paska LED (obroty, zmiana biegu, pit limiter, flagi).
+GT Wheel - LED strip effects (revs, shift light, pit limiter, flags).
 
-Ten modul nie zalezy od okienek ani portu szeregowego. Liczy tylko, jakim
-kolorem ma swiecic kazda dioda, na podstawie:
-  * ustawien z pliku leds.json (kolory, progi, efekty),
-  * telemetrii (obroty, pit limiter, flaga, czy gra dziala),
-  * czasu (do migania i animacji).
+This module doesn't depend on any windows or the serial port. It only computes
+which colour each LED should show, based on:
+  * the settings from leds.json (colours, thresholds, effects),
+  * telemetry (revs, pit limiter, flag, whether a game is running),
+  * time (for blinking and animations).
 
-Uzywa go konfigurator (podglad) i w przyszlosci program z telemetria z gier.
+Used by the configurator (preview) and by the program while you play.
 """
 
 from __future__ import annotations
@@ -49,13 +49,13 @@ TRYBY_BEZCZYNNOSCI = {
 USTAWIENIA_DOMYSLNE: dict = {
     "wersja": 1,
     "liczba_diod": 16,
-    "animacja_startu": "fala",   # raz po podlaczeniu kierownicy: "fala" / "tecza" / "wylaczona"
+    "animacja_startu": "fala",   # once after the wheel connects: "fala" (wave) / "tecza" (rainbow) / "wylaczona" (off)
     "jasnosc": 40,
     "kierunek": "lewo_prawo",
-    "kolory": [],  # uzupelniane presetem "klasyczny"
+    "kolory": [],  # filled in from the "klasyczny" (classic) preset
     "obroty": {
-        "start": 60,   # % obrotow, przy ktorych zapala sie pierwsza dioda
-        "pelne": 95,   # % obrotow, przy ktorych swieca wszystkie
+        "start": 60,   # % of revs at which the first LED lights up
+        "pelne": 95,   # % of revs at which all LEDs are lit
     },
     "stany": {
         "zmiana_biegu": {"wlaczony": True, "prog": 97, "kolor": "#0040FF", "miganie_hz": 8.0},
@@ -63,9 +63,9 @@ USTAWIENIA_DOMYSLNE: dict = {
                         "wzor": "naprzemiennie"},
         "flaga_zolta": {"wlaczony": True, "kolor": "#FFC000", "miganie_hz": 3.0},
         "flaga_niebieska": {"wlaczony": True, "kolor": "#0060FF", "miganie_hz": 3.0},
-        "flagi_diody_skrajne": 2,  # ile diod z kazdej strony pokazuje flage (0 = caly pasek)
+        "flagi_diody_skrajne": 2,  # how many LEDs on each side show the flag (0 = whole strip)
         "brak_gry": {"tryb": "oczekiwanie", "kolor": "#0030FF"},
-        # auto obok: skrajne diody po jego stronie
+        # car alongside: the outer LEDs on its side
         "spotter": {"wlaczony": True, "kolor": "#FF7A00", "miganie_hz": 0.0, "diody": 2,
                     "zamien_strony": False},
     },
@@ -74,15 +74,15 @@ USTAWIENIA_DOMYSLNE: dict = {
 
 @dataclass
 class Telemetria:
-    obroty: float = 0.0            # 0.0 .. 1.0 (czesc maksymalnych obrotow)
+    obroty: float = 0.0            # 0.0 .. 1.0 (fraction of max revs)
     gra_aktywna: bool = True
     pit_limiter: bool = False
-    flaga: str | None = None       # None, "zolta" albo "niebieska"
-    auto_lewo: bool = False        # spotter: auto obok z lewej
-    auto_prawo: bool = False       # spotter: auto obok z prawej
+    flaga: str | None = None       # None, "zolta" (yellow) or "niebieska" (blue)
+    auto_lewo: bool = False        # spotter: car alongside on the left
+    auto_prawo: bool = False       # spotter: car alongside on the right
 
 
-# ============================== kolory =====================================
+# ============================== colours =====================================
 
 def hex_na_kolor(tekst: str) -> Kolor:
     t = str(tekst).strip().lstrip("#")
@@ -107,10 +107,10 @@ def przyciemnij(kolor: Kolor, wspolczynnik: float) -> Kolor:
     return tuple(round(c * w) for c in kolor)  # type: ignore[return-value]
 
 
-# ========================= kolejnosc zapalania =============================
+# ============================= lighting order ==============================
 
 def kroki_diod(n: int, kierunek: str) -> list[int]:
-    """Numer kroku, w ktorym zapala sie kazda dioda (0 = pierwsza)."""
+    """The step at which each LED lights up (0 = first)."""
     if kierunek == "prawo_lewo":
         return [n - 1 - i for i in range(n)]
     if kierunek in ("od_srodka", "do_srodka"):
@@ -126,7 +126,7 @@ def liczba_krokow(n: int, kierunek: str) -> int:
     return max(kroki_diod(n, kierunek)) + 1 if n > 0 else 0
 
 
-# ============================== presety ====================================
+# ============================== presets =====================================
 
 PRESETY = {
     "klasyczny": "klasyczny: zielony / żółty / czerwony",
@@ -137,7 +137,7 @@ PRESETY = {
 
 
 def kolory_gradient(n: int, kierunek: str, punkty: list[Kolor]) -> list[Kolor]:
-    """Kolory wedlug kolejnosci zapalania: pierwsza dioda = punkty[0], ostatnia = punkty[-1]."""
+    """Colours in lighting order: first LED = punkty[0], last = punkty[-1]."""
     kroki = kroki_diod(n, kierunek)
     ile = max(kroki) if kroki else 0
     wynik = []
@@ -150,7 +150,7 @@ def kolory_gradient(n: int, kierunek: str, punkty: list[Kolor]) -> list[Kolor]:
 
 
 def kolory_strefy(n: int, kierunek: str, strefy: list[tuple[float, Kolor]]) -> list[Kolor]:
-    """Strefy wg kolejnosci zapalania, np. [(0.4, zielony), (0.75, zolty), (1.0, czerwony)]."""
+    """Zones in lighting order, e.g. [(0.4, green), (0.75, yellow), (1.0, red)]."""
     kroki = kroki_diod(n, kierunek)
     ile = max(kroki) + 1 if kroki else 1
     wynik = []
@@ -177,13 +177,13 @@ def kolory_presetu(nazwa: str, n: int, kierunek: str) -> list[Kolor]:
                                        (1.0, (255, 0, 0))])
 
 
-# ======================== wczytywanie / zapis ==============================
+# ============================ loading / saving =============================
 
 def _scal(domyslne: dict, wlasne: dict) -> dict:
     wynik = copy.deepcopy(domyslne)
     for klucz, wartosc in wlasne.items():
         if isinstance(wynik.get(klucz), dict):
-            if isinstance(wartosc, dict):          # zly typ (np. tekst zamiast sekcji) - pomin
+            if isinstance(wartosc, dict):          # wrong type (e.g. text instead of a section) - skip
                 wynik[klucz] = _scal(wynik[klucz], wartosc)
         else:
             wynik[klucz] = wartosc
@@ -214,7 +214,7 @@ def _kolor_lub(tekst, domyslny: str) -> str:
 
 
 def popraw_ustawienia(u: dict) -> dict:
-    """Uzupelnia brakujace pola i poprawia bledne wartosci (np. po recznej edycji pliku)."""
+    """Fills in missing fields and fixes bad values (e.g. after editing the file by hand)."""
     d = USTAWIENIA_DOMYSLNE
     u = _scal(d, u if isinstance(u, dict) else {})
 
@@ -264,7 +264,7 @@ def domyslne_ustawienia() -> dict:
 
 
 def wczytaj(sciezka: Path | str = PLIK_USTAWIEN) -> dict:
-    """Wczytuje ustawienia. Brak pliku = domyslne. Zly JSON rzuca ValueError."""
+    """Loads the settings. No file = defaults. Invalid JSON raises ValueError."""
     p = Path(sciezka)
     if not p.exists():
         return domyslne_ustawienia()
@@ -282,10 +282,10 @@ def zapisz(u: dict, sciezka: Path | str = PLIK_USTAWIEN) -> None:
     tmp.replace(p)
 
 
-# ============================ liczenie klatki ==============================
+# =========================== computing a frame =============================
 
 def _miga(t: float, hz: float) -> bool:
-    """True = faza 'swieci'. hz <= 0 oznacza swiecenie ciagle."""
+    """True = the 'on' phase. hz <= 0 means always on."""
     if hz <= 0:
         return True
     return (t * hz) % 1.0 < 0.5
@@ -310,7 +310,7 @@ def _bezczynnosc(u: dict, t: float) -> list[Kolor]:
     st = u["stany"]["brak_gry"]
     kolor = hex_na_kolor(st["kolor"])
     tryb = st["tryb"]
-    if tryb == "oczekiwanie":           # spokojnie, bez ruchu: 1-2 srodkowe diody przygaszone
+    if tryb == "oczekiwanie":           # calm, no movement: 1-2 centre LEDs dimmed
         srodek = {n // 2} if n % 2 else {n // 2 - 1, n // 2}
         przygaszony = przyciemnij(kolor, 0.35)
         return [przygaszony if i in srodek else CZARNY for i in range(n)]
@@ -322,14 +322,14 @@ def _bezczynnosc(u: dict, t: float) -> list[Kolor]:
     if tryb == "skaner":
         if n == 1:
             return [kolor]
-        faza = (t / 2.0) % 2.0                       # tam (0..1) i z powrotem (1..2)
+        faza = (t / 2.0) % 2.0                       # there (0..1) and back (1..2)
         poz = (faza if faza < 1 else 2 - faza) * (n - 1)
         return [przyciemnij(kolor, max(0.0, 1 - abs(i - poz) / 1.5)) for i in range(n)]
     return [CZARNY] * n
 
 
 def klatka(u: dict, tel: Telemetria, t: float) -> list[Kolor]:
-    """Kolory wszystkich diod w chwili t (sekundy). Bez uwzglednienia jasnosci."""
+    """Colours of all LEDs at time t (seconds). Brightness is not applied."""
     n = u["liczba_diod"]
     s = u["stany"]
 
@@ -363,7 +363,7 @@ def klatka(u: dict, tel: Telemetria, t: float) -> list[Kolor]:
             for i in list(range(skrajne)) + list(range(n - skrajne, n)):
                 wynik[i] = kolor
 
-    # spotter na samym wierzchu - auto obok jest wazniejsze niz obroty i flagi
+    # spotter on top of everything - a car alongside matters more than revs and flags
     sp = s["spotter"]
     if sp["wlaczony"] and (tel.auto_lewo or tel.auto_prawo):
         lewo, prawo = tel.auto_lewo, tel.auto_prawo
@@ -380,7 +380,7 @@ def klatka(u: dict, tel: Telemetria, t: float) -> list[Kolor]:
     return wynik
 
 
-# ===================================================== animacja startowa
+# ===================================================== start-up animation
 ANIMACJE_STARTU = {
     "fala": "biała fala od brzegów, potem kolory obrotów",
     "tecza": "tęcza przesuwająca się po pasku",
@@ -403,7 +403,7 @@ def _hsv(h: float) -> Kolor:
 
 
 def animacja_startu(u: dict, t: float) -> list[Kolor] | None:
-    """Klatka animacji startowej w chwili t od jej poczatku albo None, gdy sie skonczyla."""
+    """Start-up animation frame at time t from its start, or None once it has finished."""
     styl = u.get("animacja_startu", "fala")
     if styl == "wylaczona" or t < 0 or t >= CZAS_ANIMACJI_S:
         return None
@@ -412,16 +412,16 @@ def animacja_startu(u: dict, t: float) -> list[Kolor] | None:
         jasnosc = _gladko(t / 0.4) * (1 - _gladko((t - 1.9) / 0.7))
         return [przyciemnij(_hsv(i / max(n, 1) * 0.9 - t * 0.55), jasnosc) for i in range(n)]
 
-    # "fala": biale diody zapalaja sie od brzegow do srodka, potem przechodza w kolory
-    # obrotow (te z ustawien), chwila pelnego paska i wygaszenie
+    # "fala" (wave): white LEDs light up from the edges to the centre, then change to the
+    # rev colours (from the settings), a moment of full strip, then fade out
     kroki = kroki_diod(n, "do_srodka")
     ile = max(kroki) + 1
     kolory = [hex_na_kolor(k) for k in u["kolory"]]
     wynik = []
     for i, krok in enumerate(kroki):
-        zapal = _gladko((t - 0.75 * krok / ile) / 0.18)          # 0..0,9 s - fala
-        w_kolor = _gladko((t - 0.95 - 0.25 * krok / ile) / 0.35)  # 0,95..1,55 s - kolory
-        zgas = 1 - _gladko((t - 1.9) / 0.7)                       # 1,9..2,6 s - wygaszanie
+        zapal = _gladko((t - 0.75 * krok / ile) / 0.18)          # 0..0.9 s - wave
+        w_kolor = _gladko((t - 0.95 - 0.25 * krok / ile) / 0.35)  # 0.95..1.55 s - colours
+        zgas = 1 - _gladko((t - 1.9) / 0.7)                       # 1.9..2.6 s - fade out
         wynik.append(przyciemnij(mieszaj(BIALY, kolory[i], w_kolor), zapal * zgas))
     return wynik
 
@@ -431,5 +431,5 @@ def z_jasnoscia(kolory: list[Kolor], jasnosc_proc: float) -> list[Kolor]:
 
 
 def komenda_leds(kolory: list[Kolor]) -> str:
-    """Linia do wyslania do ESP32, np. 'LEDS 00FF00FF0000...'."""
+    """The line to send to the ESP32, e.g. 'LEDS 00FF00FF0000...'."""
     return "LEDS " + "".join("{:02X}{:02X}{:02X}".format(*k) for k in kolory)

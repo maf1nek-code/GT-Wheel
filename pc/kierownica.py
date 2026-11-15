@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Kierownica GT - most: ESP32 (port szeregowy) -> wirtualny kontroler do gier,
-a telemetria z gry -> pasek LED w kierownicy.
+GT Wheel - bridge: ESP32 (serial port) -> virtual game controller,
+and game telemetry -> the LED strip on the wheel.
 
-1. Sam znajduje port COM, do ktorego podlaczone jest ESP32 z firmware
-   "kierownica_gt" (wysyla PING i czeka na "PONG KIEROWNICA_GT").
-2. Nasluchuje ten port: "BTN 10 ON" -> wirtualny przycisk 10 wcisniety.
-3. Po odlaczeniu kabla puszcza wszystkie przyciski i szuka kierownicy ponownie.
-4. Czyta telemetrie z gry (Assetto Corsa, ACC, Le Mans Ultimate) i steruje
-   paskiem LED wg ustawien z konfiguratora (plik leds.json).
+1. Finds the COM port with the ESP32 running the GT Wheel firmware by itself
+   (sends PING and waits for "PONG KIEROWNICA_GT").
+2. Listens on that port: "BTN 10 ON" -> virtual button 10 pressed.
+3. When the cable is unplugged, releases all buttons and searches for the wheel again.
+4. Reads game telemetry (Assetto Corsa, ACC, Le Mans Ultimate) and drives
+   the LED strip according to the configurator settings (leds.json).
 
-Emulacja kontrolera (Windows):
-  * vJoy     - "zwykly" joystick DirectInput z przyciskami 1..12.
-               Najlepszy do simracingu (w grze widzisz "Przycisk 10").
-               Wymaga sterownika vJoy: https://github.com/BrunnerInnovation/vJoy/releases
-  * xbox     - wirtualny pad Xbox 360 (biblioteka vgamepad + sterownik ViGEmBus).
-  * konsola  - bez emulacji, tylko wypisuje odczyty (test).
-  * auto     - (domyslnie) vJoy jesli jest zainstalowany, w przeciwnym razie Xbox.
+Controller emulation (Windows):
+  * vJoy     - a "regular" DirectInput joystick with buttons 1..12.
+               Best for sim racing (games show "Button 10").
+               Requires the vJoy driver: https://github.com/BrunnerInnovation/vJoy/releases
+  * xbox     - virtual Xbox 360 pad (vgamepad library + ViGEmBus driver).
+  * konsola  - no emulation, only prints the readings (test).
+  * auto     - (default) vJoy if installed, otherwise Xbox.
 
-Uzycie:
-  python kierownica.py                 # wszystko automatycznie
-  python kierownica.py --backend xbox  # wymus pad Xbox 360
-  python kierownica.py --port COM5     # pomin autowykrywanie
-  python kierownica.py --list          # pokaz porty COM
-  python kierownica.py --bez-diod      # nie steruj paskiem LED
+Usage:
+  python kierownica.py                 # everything automatic
+  python kierownica.py --backend xbox  # force the Xbox 360 pad
+  python kierownica.py --port COM5     # skip auto-detection
+  python kierownica.py --list          # list COM ports
+  python kierownica.py --bez-diod      # don't drive the LED strip
 """
 
 from __future__ import annotations
@@ -46,24 +46,24 @@ except ImportError:
 import led_efekty as fx
 import telemetria
 
-# ------------------------------- ustawienia -------------------------------
-DEVICE_ID = "KIEROWNICA_GT"   # musi zgadzac sie z firmware ESP32
+# -------------------------------- settings --------------------------------
+DEVICE_ID = "KIEROWNICA_GT"   # must match the ESP32 firmware
 BAUD_RATE = 115200
-PROBE_TIMEOUT_S = 3.0          # ile czekac na odpowiedz z jednego portu
-SILENCE_TIMEOUT_S = 5.0        # ESP wysyla STATE co 1 s - cisza = rozlaczenie
-RESCAN_DELAY_S = 2.0           # przerwa miedzy kolejnymi skanami portow
+PROBE_TIMEOUT_S = 3.0          # how long to wait for a reply from one port
+SILENCE_TIMEOUT_S = 5.0        # the ESP sends STATE every 1 s - silence = disconnected
+RESCAN_DELAY_S = 2.0           # pause between port scans
 
-# Producenci ukladow USB, ktore zwykle siedza na plytkach ESP32 - sprawdzane najpierw.
+# Makers of the USB chips usually found on ESP32 boards - checked first.
 KNOWN_VIDS = {
-    0x303A,  # Espressif (natywne USB ESP32-S2/S3/C3)
+    0x303A,  # Espressif (native USB ESP32-S2/S3/C3)
     0x2341,  # Arduino (Arduino Nano ESP32)
     0x1A86,  # WCH CH340/CH9102
     0x10C4,  # Silicon Labs CP210x
     0x0403,  # FTDI
 }
 
-# Mapowanie przycisk kierownicy -> przycisk pada Xbox 360 (tylko backend "xbox").
-# Przycisk "Guide" pominiety celowo - otwiera Xbox Game Bar w Windows.
+# Wheel button -> Xbox 360 pad button mapping ("xbox" backend only).
+# The "Guide" button is skipped on purpose - it opens the Xbox Game Bar in Windows.
 XBOX_MAPPING = {
     1: "XUSB_GAMEPAD_A",
     2: "XUSB_GAMEPAD_B",
@@ -89,10 +89,10 @@ class ConnectionLost(Exception):
     pass
 
 
-# =============================== emulacja ==================================
+# =============================== emulation =================================
 
 class Backend:
-    """Bazowa klasa wirtualnego kontrolera."""
+    """Base class of a virtual controller."""
 
     name = "tylko konsola (bez emulacji)"
 
@@ -121,7 +121,7 @@ class Backend:
 class VJoyBackend(Backend):
     def __init__(self, device_id: int = 1) -> None:
         super().__init__()
-        import pyvjoy  # noqa: WPS433 - import opcjonalny
+        import pyvjoy  # noqa: WPS433 - optional import
 
         self._dev = pyvjoy.VJoyDevice(device_id)
         self.name = f"vJoy (urzadzenie {device_id})"
@@ -137,7 +137,7 @@ class XboxBackend(Backend):
 
     def __init__(self) -> None:
         super().__init__()
-        import vgamepad as vg  # noqa: WPS433 - import opcjonalny
+        import vgamepad as vg  # noqa: WPS433 - optional import
 
         self._pad = vg.VX360Gamepad()
         self._map = {n: getattr(vg.XUSB_BUTTON, btn) for n, btn in XBOX_MAPPING.items()}
@@ -165,7 +165,7 @@ def create_backend(choice: str, vjoy_id: int) -> Backend:
     if choice in ("auto", "vjoy"):
         try:
             return VJoyBackend(vjoy_id)
-        except Exception as exc:  # brak pyvjoy, sterownika lub urzadzenie zajete
+        except Exception as exc:  # no pyvjoy, no driver, or the device is busy
             errors.append(f"vJoy: {exc}")
             if choice == "auto" and not isinstance(exc, ImportError):
                 log(f"vJoy niedostepny ({exc}) - probuje pada Xbox.")
@@ -178,7 +178,7 @@ def create_backend(choice: str, vjoy_id: int) -> Backend:
     if choice in ("auto", "xbox"):
         try:
             return XboxBackend()
-        except Exception as exc:  # brak vgamepad albo sterownika ViGEmBus
+        except Exception as exc:  # no vgamepad or no ViGEmBus driver
             errors.append(f"Xbox/ViGEm: {exc}")
             if choice == "xbox":
                 log("Nie udalo sie uruchomic pada Xbox: " + str(exc))
@@ -192,13 +192,13 @@ def create_backend(choice: str, vjoy_id: int) -> Backend:
     return Backend()
 
 
-# ============================ wykrywanie portu =============================
+# ============================= port detection ==============================
 
 def list_candidate_ports() -> list:
     ports = []
     for p in list_ports.comports():
         if "BTHENUM" in (p.hwid or "").upper():
-            continue  # porty Bluetooth - wolno sie otwieraja i to na pewno nie ESP
+            continue  # Bluetooth ports - slow to open and certainly not the ESP
         ports.append(p)
     ports.sort(key=lambda p: (0 if p.vid in KNOWN_VIDS else 1, p.device))
     return ports
@@ -208,11 +208,11 @@ def list_candidate_ports() -> list:
 class DeviceInfo:
     n_buttons: int = 12
     version: str = "?"
-    max_leds: int = 0      # 0 = firmware bez obslugi paska LED
+    max_leds: int = 0      # 0 = firmware without LED strip support
 
 
 def parse_hello(line: str) -> DeviceInfo | None:
-    """'PONG KIEROWNICA_GT 1.1 12 LED 60' -> DeviceInfo(12, '1.1', 60), inaczej None."""
+    """'PONG KIEROWNICA_GT 1.1 12 LED 60' -> DeviceInfo(12, '1.1', 60), otherwise None."""
     parts = line.split()
     if len(parts) >= 2 and parts[0] in ("PONG", "HELLO") and parts[1] == DEVICE_ID:
         info = DeviceInfo()
@@ -227,7 +227,7 @@ def parse_hello(line: str) -> DeviceInfo | None:
 
 
 def probe(port: str, busy: list[str]):
-    """Sprawdza, czy na porcie jest kierownica. Zwraca (serial, DeviceInfo) albo None."""
+    """Checks whether the wheel is on the port. Returns (serial, DeviceInfo) or None."""
     try:
         ser = serial.Serial(port, BAUD_RATE, timeout=0.1, write_timeout=0.5)
     except serial.SerialException as exc:
@@ -265,7 +265,7 @@ def probe(port: str, busy: list[str]):
 
 
 def wait_for_device(port_arg: str | None):
-    """Skanuje porty do skutku. Zwraca (nazwa_portu, serial, DeviceInfo)."""
+    """Scans the ports until the wheel is found. Returns (port_name, serial, DeviceInfo)."""
     announced = False
     while True:
         names = [port_arg] if port_arg else [p.device for p in list_candidate_ports()]
@@ -288,10 +288,10 @@ def wait_for_device(port_arg: str | None):
         time.sleep(RESCAN_DELAY_S)
 
 
-# ============================== diody LED ==================================
+# ================================= LEDs ====================================
 
 class DiodyZGry(threading.Thread):
-    """Telemetria z gry -> efekty z leds.json -> komendy LEDS do kierownicy."""
+    """Game telemetry -> effects from leds.json -> LEDS commands to the wheel."""
 
     FPS = 60
 
@@ -345,10 +345,10 @@ class DiodyZGry(threading.Thread):
             if komunikat != opis:
                 opis = komunikat
                 log(f"Diody: {opis}")
-            powitanie = fx.animacja_startu(u, teraz - t0)   # raz, zaraz po podlaczeniu
+            powitanie = fx.animacja_startu(u, teraz - t0)   # once, right after connecting
             kolory = (powitanie or fx.klatka(u, stan.telemetria(), teraz - t0))[:self.max_leds]
             linia = fx.komenda_leds(fx.z_jasnoscia(kolory, u["jasnosc"]))
-            # ~70% przepustowosci 115200 bodow; to samo co poprzednio - tylko raz na sekunde
+            # ~70% of 115200 baud; an unchanged frame is resent only once a second
             if teraz - wyslano >= max(1.0 / self.FPS, len(linia) / 8000.0) and \
                     (linia != ostatnia or teraz - wyslano >= 1.0):
                 if not self._wyslij(linia):
@@ -362,7 +362,7 @@ class DiodyZGry(threading.Thread):
         self.join(timeout=1.0)
 
 
-# =============================== nasluch ===================================
+# =============================== listening =================================
 
 def listen(ser, backend: Backend, n_buttons: int, zapis_lock: threading.Lock | None = None) -> None:
     state: dict[int, bool] = {}
@@ -386,7 +386,7 @@ def listen(ser, backend: Backend, n_buttons: int, zapis_lock: threading.Lock | N
     last_rx = time.monotonic()
 
     while True:
-        raw = ser.readline()  # na odlaczonym porcie rzuca SerialException
+        raw = ser.readline()  # raises SerialException on an unplugged port
         now = time.monotonic()
         if not raw:
             if now - last_rx > SILENCE_TIMEOUT_S:
@@ -406,7 +406,7 @@ def listen(ser, backend: Backend, n_buttons: int, zapis_lock: threading.Lock | N
             apply(number, parts[2].upper() == "ON", parts[3] if len(parts) >= 4 else "")
 
         elif parts[0] == "STATE" and len(parts) >= 2:
-            # Pelny stan co 1 s - naprawia ewentualnie zgubione komunikaty.
+            # Full state every 1 s - recovers from any lost messages.
             for number, ch in enumerate(parts[1], start=1):
                 if ch in "01":
                     apply(number, ch == "1", sync=True)
@@ -415,7 +415,7 @@ def listen(ser, backend: Backend, n_buttons: int, zapis_lock: threading.Lock | N
 # ================================= main ====================================
 
 def parse_args() -> argparse.Namespace:
-    ap = argparse.ArgumentParser(description="Kierownica GT: ESP32 -> wirtualny kontroler do gier")
+    ap = argparse.ArgumentParser(description="GT Wheel: ESP32 -> wirtualny kontroler do gier")
     ap.add_argument("--port", help="konkretny port, np. COM5 (domyslnie: autowykrywanie)")
     ap.add_argument("--backend", choices=["auto", "vjoy", "xbox", "konsola"], default="auto",
                     help="rodzaj emulacji kontrolera (domyslnie: auto)")
@@ -444,7 +444,7 @@ def main() -> None:
         return
 
     print("=" * 60)
-    print("  KIEROWNICA GT  -  ESP32 -> kontroler do gier")
+    print("  GT WHEEL  -  ESP32 -> kontroler do gier")
     print("=" * 60)
 
     backend = create_backend(args.backend, args.vjoy_id)

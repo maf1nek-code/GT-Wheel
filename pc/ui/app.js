@@ -1,7 +1,7 @@
 /* =====================================================================
-   Kierownica GT – konfigurator (interfejs)
-   Program w Pythonie (konfigurator.py) obsługuje kierownicę i liczy
-   efekty LED; ta strona tylko je pokazuje i zmienia ustawienia.
+   GT Wheel – configurator (interface)
+   The Python program (konfigurator.py) handles the wheel and computes
+   the LED effects; this page only shows them and changes the settings.
    ===================================================================== */
 'use strict';
 
@@ -42,7 +42,7 @@ const KROTKO_PIT = { caly: 'Cały pasek', naprzemiennie: 'Co druga', polowki: 'P
 const KROTKO_TRYB = { oczekiwanie: 'Czekanie', wylaczone: 'Zgaszone', staly: 'Stały', oddech: 'Oddech', skaner: 'Skaner' };
 const NAZWY_SIM = { gra: 'Gra na żywo', jazda: 'Jazda', pit: 'Pit limiter', zolta: 'Flaga żółta', niebieska: 'Flaga niebieska', brak_gry: 'Gra wyłączona' };
 
-/* ------------------------------------------------------------ narzędzia */
+/* -------------------------------------------------------------- helpers */
 function getPath(o, path) { return path.split('.').reduce((a, k) => (a == null ? a : a[k]), o); }
 function setPath(o, path, v) {
   const k = path.split('.'); const last = k.pop();
@@ -76,8 +76,8 @@ function toast(tekst, typ = 'ok', ms = 3000) {
   el.querySelector('span').textContent = tekst;
   const box = $('#toasts');
   box.append(el);
-  // warstwa nad oknami dialogowymi (inaczej komunikat chowa się pod tłem okna)
-  try { if (box.matches(':popover-open')) box.hidePopover(); box.showPopover(); } catch { /* starsza przeglądarka */ }
+  // layer above dialogs (otherwise the message hides behind the dialog backdrop)
+  try { if (box.matches(':popover-open')) box.hidePopover(); box.showPopover(); } catch { /* older browser */ }
   while (box.children.length > 4) box.firstElementChild.remove();
   setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 220); }, ms);
 }
@@ -104,7 +104,7 @@ function potwierdz(tytul, tekst, ok = 'OK', niebezpieczne = false) {
   });
 }
 
-/* ================================================================ PASKI */
+/* ================================================================= BARS */
 function kolumny(n, max) { return n <= max ? n : Math.ceil(n / Math.ceil(n / max)); }
 
 function budujPasek(el, n, max) {
@@ -135,15 +135,15 @@ function malujPasek(el, hex, max) {
   }
 }
 
-/* ============================================================== ZAKŁADKI */
+/* ================================================================= TABS */
 function pokazZakladke(nazwa) {
   S.tab = nazwa;
   $$('.tab-btn').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === nazwa)));
   $$('.tab').forEach((t) => { t.hidden = t.id !== `tab-${nazwa}`; });
-  try { localStorage.setItem('kgt-tab', nazwa); } catch { /* bez pamięci */ }
+  try { localStorage.setItem('kgt-tab', nazwa); } catch { /* no storage */ }
 }
 
-/* ============================================================ POŁĄCZENIE */
+/* =========================================================== CONNECTION */
 const KROTKI_STATUS = {
   szukam: 'Szukam kierownicy…', brak: 'Nie znaleziono kierownicy', zajety: 'Port zajęty',
   utracono: 'Utracono połączenie', rozlaczono: 'Rozłączono',
@@ -165,7 +165,7 @@ function renderStatus() {
     <dt>Pasek LED</dt><dd>${info.max_diod ? `do ${info.max_diod} diod` : 'brak obsługi (stary firmware)'}</dd>` : '';
   $('#btnDisconnect').disabled = !st.chce;
 
-  // pasek stanu pod kierownicą
+  // status bar under the wheel
   const ov = $('#wheelOverlay');
   const polaczono = st.stan === 'polaczono';
   ov.classList.toggle('hide', polaczono);
@@ -226,15 +226,15 @@ async function otworzPopover() {
       `<option value="${esc(p.port)}">${esc(p.port)}${p.opis ? ' – ' + esc(p.opis) : ''}</option>`).join('');
     if (wybrany && !porty.some((p) => p.port === wybrany)) sel.insertAdjacentHTML('beforeend', `<option value="${esc(wybrany)}">${esc(wybrany)}</option>`);
     sel.value = wybrany || '';
-  } catch { /* zostaw stare */ }
+  } catch { /* keep the old one */ }
 }
 function zamknijPopover() {
   $('#connPop').hidden = true;
   $('#connPill').setAttribute('aria-expanded', 'false');
 }
 
-/* ======================================================= TEST PRZYCISKÓW */
-// Miejsca na rysunku kierownicy (współrzędne w układzie 1205 × 700, jak zdjęcie).
+/* ========================================================== BUTTON TEST */
+// Spots on the wheel drawing (coordinates in a 1205 × 700 frame, like the photo).
 const MIEJSCA = [
   { id: 'l_zolty', nazwa: 'żółty, lewy górny', x: 165, y: 128, r: 30, kolor: '#f2c014', jasny: true },
   { id: 'l_czarny', nazwa: 'czarny, lewy górny', x: 243, y: 142, r: 26, kolor: '#24262a' },
@@ -250,7 +250,7 @@ const MIEJSCA = [
   { id: 'pok_s', nazwa: 'środkowe pokrętło', x: 602, y: 524, r: 33, pokretlo: true },
   { id: 'pok_p', nazwa: 'prawe pokrętło', x: 735, y: 524, r: 33, pokretlo: true },
 ];
-// Zgadnięte z README: lewa strona płytki = 1–5 i 11, prawa = 6–10 i 12.
+// Guessed from the README: left side of the board = 1–5 and 11, right = 6–10 and 12.
 const UKLAD_DOMYSLNY = {
   l_zolty: 1, l_czarny: 2, l_czerwony: 3, l_bialy: 4, l_zielony: 5,
   p_czarny: 6, p_niebieski: 7, p_czerwony: 8, p_bialy: 9, p_pomaranczowy: 10, pok_l: 11, pok_p: 12,
@@ -532,7 +532,7 @@ function stanPrzyciskow(bity) {
   S.pierwszyStan = false;
 }
 
-/* ------------------------------------------------- przypisywanie miejsc */
+/* -------------------------------------------------- assigning the spots */
 function renderPrzypisywanie() {
   const p = S.przyp;
   $('#assignBar').hidden = !p.wl;
@@ -570,7 +570,7 @@ function przelaczPrzypisywanie(wl) {
   renderPrzypisywanie();
 }
 
-/* ============================================================ DIODY LED */
+/* ================================================================= LEDS */
 function budujStany() {
   const o = S.opts;
   $('#states').innerHTML = STANY.map((st) => {
@@ -620,10 +620,10 @@ function budujStany() {
 }
 
 function budujStale() {
-  // paleta
+  // palette
   $('#palette').innerHTML = PALETA.map(([k, n]) =>
     `<button style="--sw:${k}" data-kolor="${k}" title="${n}" aria-label="${n}"></button>`).join('');
-  // ikonki kierunku (7 diod)
+  // direction icons (7 LEDs)
   const wzory = {
     lewo_prawo: { 0: 'l1', 1: 'l2' }, prawo_lewo: { 6: 'l1', 5: 'l2' },
     od_srodka: { 3: 'l1', 2: 'l2', 4: 'l2' }, do_srodka: { 0: 'l1', 6: 'l1', 1: 'l2', 5: 'l2' },
@@ -643,7 +643,7 @@ function renderGradient() {
   $('#gradPreview').style.background = `linear-gradient(90deg, ${S.gradient.join(', ')})`;
 }
 
-/* --------------------------------------------------- formularz ustawień */
+/* -------------------------------------------------------- settings form */
 function ustawZakres(el) {
   const min = +el.min || 0, max = +el.max || 100;
   el.style.setProperty('--p', `${((+el.value - min) / (max - min)) * 100}%`);
@@ -702,7 +702,7 @@ async function wyslijUstawienia() {
   if (!d) return;
   S.niezapisane = d.niezapisane;
   if (nr === S.lokalnie && stabilny(d.ustawienia) !== stabilny(S.u)) {
-    S.u = d.ustawienia;   // program poprawił wartości (np. zakresy)
+    S.u = d.ustawienia;   // the program corrected the values (e.g. ranges)
     renderForm();
   } else {
     renderZapis();
@@ -722,7 +722,7 @@ function ustawPole(sciezka, v) {
 }
 
 function przeskaluj(n) {
-  // rozciąga ostatnio ustawiony wzór kolorów na nową liczbę diod
+  // stretches the last colour pattern over the new number of LEDs
   const w = S.wzor && S.wzor.length ? S.wzor : S.u.kolory;
   S.u.kolory = Array.from({ length: n }, (_, i) => (n === 1 || w.length === 1 ? w[0] : w[Math.round((i * (w.length - 1)) / (n - 1))]));
   S.sel = new Set([...S.sel].filter((i) => i < n));
@@ -745,7 +745,7 @@ function renderZasilanie() {
     : `<svg><use href="#i-plug"/></svg><span>Maksymalny pobór paska: <b>≈ ${ma} mA</b> – zasilanie z USB wystarczy.</span>`;
 }
 
-/* ------------------------------------------------------- edytor kolorów */
+/* --------------------------------------------------------- colour editor */
 function renderEdytor() {
   const ed = $('#editor');
   const n = S.u.liczba_diod;
@@ -793,7 +793,7 @@ function ustawWszystkieKolory(kolory) {
   zmiana();
 }
 
-/* --------------------------------------------------------------- presety */
+/* --------------------------------------------------------------- presets */
 function odswiezPresety() {
   clearTimeout(S.presetTimer);
   S.presetTimer = setTimeout(async () => {
@@ -819,7 +819,7 @@ function renderPresetyAktywne() {
   $$('.preset').forEach((b) => b.classList.toggle('active', stabilny(S.presety[b.dataset.preset] || []) === akt));
 }
 
-/* ----------------------------------------------------------------- progi */
+/* ------------------------------------------------------------ thresholds */
 const PROGI = {
   start: () => S.u.obroty.start, pelne: () => S.u.obroty.pelne, prog: () => S.u.stany.zmiana_biegu.prog,
 };
@@ -851,7 +851,7 @@ function renderProgi() {
   sz.style.left = `${pr}%`;
   sz.style.opacity = S.u.stany.zmiana_biegu.wlaczony ? '1' : '.25';
   $('.h-shift').style.opacity = S.u.stany.zmiana_biegu.wlaczony ? '1' : '.45';
-  // znaczniki na suwaku obrotów w podglądzie
+  // markers on the rev slider in the preview
   $('#rpmMarks').innerHTML = `<i style="left:${st}%;background:var(--c-start)"></i><i style="left:${pe}%;background:var(--c-full)"></i>${S.u.stany.zmiana_biegu.wlaczony ? `<i style="left:${pr}%;background:var(--c-shift)"></i>` : ''}`;
 }
 
@@ -881,7 +881,7 @@ function ruchProgu(e) {
   ustawProg(d.k, v);
 }
 
-/* ------------------------------------------------------- podgląd / klatki */
+/* ------------------------------------------------------ preview / frames */
 let klatka = null, rafCzeka = false;
 function naKlatke(m) {
   klatka = m;
@@ -972,7 +972,7 @@ function wyslijSim(zmiany) {
   }, 40);
 }
 
-/* -------------------------------------------------------------- zapis */
+/* -------------------------------------------------------------- saving */
 function renderZapis() {
   const bar = $('#savebar');
   bar.classList.toggle('dirty', S.niezapisane);
@@ -990,7 +990,7 @@ async function zapisz() {
   if (d) toast(S.profil ? `Zapisano (także w profilu „${S.profil}”).` : 'Zapisano ustawienia diod.');
 }
 
-/* -------------------------------------------------------------- profile */
+/* ------------------------------------------------------------- profiles */
 function renderProfile() {
   const box = $('#profileList');
   if (!S.profile.length) {
@@ -1010,7 +1010,7 @@ function renderProfile() {
   }).join('');
 }
 
-/* ============================================================= USTAWIENIA */
+/* ============================================================= SETTINGS */
 function renderProgram() {
   const p = S.program;
   if (!p) return;
@@ -1054,10 +1054,10 @@ async function zmienProgram(zmiany, komunikat) {
     S.program = d.program;
     if (komunikat) toast(komunikat, 'ok', 2600);
   }
-  renderProgram();    // przy błędzie cofa przełącznik do faktycznego stanu
+  renderProgram();    // on error, puts the switch back to the actual state
 }
 
-/* ===================================================== AKTUALIZACJA FIRMWARE */
+/* ======================================================= FIRMWARE UPDATE */
 const wersjaT = (v) => (String(v || '').match(/\d+/g) || []).slice(0, 4).map(Number);
 function nowszaWersja(a, b) {
   const x = wersjaT(a), y = wersjaT(b);
@@ -1142,7 +1142,7 @@ async function wgrajPlikFw(plik) {
   }
 }
 
-/* ============================================================ ZDARZENIA */
+/* =============================================================== EVENTS */
 function przyjmijUstawienia(m) {
   S.u = m.ustawienia;
   S.wzor = [...S.u.kolory];
@@ -1150,7 +1150,7 @@ function przyjmijUstawienia(m) {
   if ('niezapisane' in m) S.niezapisane = m.niezapisane;
   if ('profil' in m) S.profil = m.profil;
   if (m.profile) S.profile = m.profile;
-  S.lokalnie = (S.lokalnie || 0) + 1;   // odrzuć odpowiedzi na starsze zmiany
+  S.lokalnie = (S.lokalnie || 0) + 1;   // drop replies to older changes
   renderForm();
   odswiezPresety();
   renderProfile();
@@ -1225,10 +1225,10 @@ function polaczZdarzenia() {
 }
 
 function podepnij() {
-  // zakładki
+  // tabs
   $$('.tab-btn').forEach((b) => b.addEventListener('click', () => pokazZakladke(b.dataset.tab)));
 
-  // połączenie
+  // connection
   $('#connPill').addEventListener('click', (e) => { e.stopPropagation(); if ($('#connPop').hidden) otworzPopover(); else zamknijPopover(); });
   $('#connPop').addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', () => zamknijPopover());
@@ -1238,14 +1238,14 @@ function podepnij() {
   $('#btnDisconnect').addEventListener('click', async () => { if (await api('/api/rozlacz')) zamknijPopover(); });
   $('#ovConnect').addEventListener('click', () => api('/api/polacz', { port: S.status ? S.status.port_wybrany : null }));
 
-  // test przycisków
+  // button test
   $('#btnTestReset').addEventListener('click', () => {
     S.btns.forEach((b) => { b.licz = 0; b.ok = false; });
     renderPrzyciski();
     $('#log').innerHTML = '<li class="log-empty">Tu pojawi się każde wciśnięcie.</li>';
     toast('Test zaczęty od nowa.', 'info');
   });
-  // ustawienia programu
+  // program settings
   $('#pAutostart').addEventListener('change', (e) => zmienProgram({ autostart: e.target.checked },
     e.target.checked ? 'Program będzie startował razem z Windows (w tle, przy zegarze).' : 'Wyłączono autostart.'));
   $$('input[data-prog]').forEach((el) => el.addEventListener('change', () => zmienProgram({ [el.dataset.prog]: el.checked })));
@@ -1267,7 +1267,7 @@ function podepnij() {
     }
   });
 
-  // aktualizacja firmware
+  // firmware update
   $('#btnFw').addEventListener('click', otworzFw);
   $('#fwbOpen').addEventListener('click', otworzFw);
   $('#fwClose').addEventListener('click', () => $('#dlgFw').close());
@@ -1284,7 +1284,7 @@ function podepnij() {
   $('#fwFromFile').addEventListener('click', () => $('#fwFile').click());
   $('#fwFile').addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; wgrajPlikFw(f); });
 
-  // przypisywanie przycisków do miejsc na rysunku
+  // assigning buttons to spots on the drawing
   $('#btnAssign').addEventListener('click', () => przelaczPrzypisywanie(!S.przyp.wl));
   $('#abDone').addEventListener('click', () => { przelaczPrzypisywanie(false); toast('Zapisano układ przycisków.'); });
   $('#abClear').addEventListener('click', async () => {
@@ -1308,7 +1308,7 @@ function podepnij() {
   });
   $('#btnLogClear').addEventListener('click', () => { $('#log').innerHTML = '<li class="log-empty">Tu pojawi się każde wciśnięcie.</li>'; });
 
-  // pola z data-bind
+  // fields with data-bind
   document.addEventListener('input', (e) => {
     const el = e.target;
     if (el.type === 'range') ustawZakres(el);
@@ -1348,7 +1348,7 @@ function podepnij() {
     }
   });
 
-  // edytor kolorów
+  // colour editor
   const ed = $('#editor');
   ed.addEventListener('pointerdown', (e) => {
     const i = indeksDiody(e.target);
@@ -1412,7 +1412,7 @@ function podepnij() {
     if (d) ustawWszystkieKolory(d.kolory);
   });
 
-  // progi
+  // thresholds
   $$('.thr-h').forEach((h) => {
     h.addEventListener('pointerdown', (e) => startProgu(e, h.dataset.k));
     h.addEventListener('keydown', (e) => {
@@ -1440,14 +1440,14 @@ function podepnij() {
   document.addEventListener('pointerup', koniecProgu);
   document.addEventListener('pointercancel', koniecProgu);
 
-  // symulacja
+  // simulation
   $('#simState').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-v]');
     if (b) { S.sim.stan = b.dataset.v; renderSim(); wyslijSim({ stan: b.dataset.v }); }
   });
   $('#giUse').addEventListener('click', () => { S.sim.stan = 'gra'; renderSim(); wyslijSim({ stan: 'gra' }); });
   $('#animPokaz').addEventListener('click', async () => {
-    await dokonczWysylanie();   // najpierw wyslij wybrany styl animacji
+    await dokonczWysylanie();   // send the selected animation style first
     wyslijSim({ animacja: true });
   });
   $('#simAuto').addEventListener('click', () => { S.sim.auto = !S.sim.auto; renderSim(); wyslijSim({ auto: S.sim.auto }); });
@@ -1465,7 +1465,7 @@ function podepnij() {
   rpm.addEventListener('pointerup', puscRpm);
   rpm.addEventListener('blur', puscRpm);
 
-  // zapis
+  // saving
   $('#btnSave').addEventListener('click', zapisz);
   $('#btnRevert').addEventListener('click', async () => {
     if (await potwierdz('Cofnąć zmiany?', 'Ustawienia wrócą do ostatnio zapisanych w pliku.', 'Cofnij zmiany')) {
@@ -1480,7 +1480,7 @@ function podepnij() {
     }
   });
 
-  // profile
+  // profiles
   const dlg = $('#dlgProfiles');
   $('#btnProfiles').addEventListener('click', () => { renderProfile(); dlg.showModal(); $('#profileName').focus(); });
   dlg.addEventListener('click', (e) => {
@@ -1546,7 +1546,7 @@ function podepnij() {
     }
   });
 
-  // skróty klawiszowe
+  // keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
@@ -1568,7 +1568,7 @@ function podepnij() {
 /* ================================================================ START */
 (function start() {
   let tab = 'przyciski';
-  try { tab = localStorage.getItem('kgt-tab') || tab; } catch { /* bez pamięci */ }
+  try { tab = localStorage.getItem('kgt-tab') || tab; } catch { /* no storage */ }
   pokazZakladke(['ledy', 'ustawienia'].includes(tab) ? tab : 'przyciski');
   przygotujPrzyciski(12, false);
   podepnij();
