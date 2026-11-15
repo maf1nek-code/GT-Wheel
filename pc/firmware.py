@@ -19,7 +19,7 @@ import sys
 import urllib.error
 import urllib.request
 
-REPOZYTORIUM = "maf1nek-code/Kierownica-gt"
+REPOZYTORIUM = "maf1nek-code/GT-Wheel"
 API_WYDAN = f"https://api.github.com/repos/{REPOZYTORIUM}/releases?per_page=30"
 USER_AGENT = "KierownicaGT-konfigurator"
 MAX_ROZMIAR = 8 * 1024 * 1024
